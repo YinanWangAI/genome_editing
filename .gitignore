@@ -1,4 +1,6 @@
 .idea/*
+test/*
 *.ipynb
 .ipynb_checkpoints/*
+tmp/*
 

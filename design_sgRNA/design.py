@@ -4,13 +4,14 @@ import numpy as np
 import pandas as pd
 import regex
 import sqlalchemy
+from .rs2 import compute_rs2
 
 
 class Designer:
     """Design sgRNAs for a target"""
 
-    def __init__(self, entrez_id, sgrna_upstream=20, sgrna_downstream=3,
-                 flank=30):
+    def __init__(self, entrez_id, sgrna_upstream=4, sgrna_downstream=3,
+                 sgrna_length=20, flank=30, overlapped=True, filter_tttt=True):
         """Init
 
         Args:
@@ -18,19 +19,23 @@ class Designer:
             sgrna_upstream: the length of sgRNA upstream
             sgrna_downstream: the length of sgRNA downstream
             flank: the length of flank sequence
+            overlapped: whether the sgRNAs could be overlapped
         """
         self.target_gene = Gene(entrez_id)
         self.target_gene.get_sequence(flank)
         self.sgrna_upstream = sgrna_upstream
         self.sgrna_downstream = sgrna_downstream
+        self.sgrna_length = sgrna_length
         self.flank = flank
         self.sgrnas = []
+        self.overlapped = overlapped
+        self.filter_tttt = filter_tttt
 
-    def get_sgrnas(self, filter_tttt=True):
+    def get_sgrnas(self, pams=['NGG', 'NAG']):
         """Get sgRNAs with PAM NGG and NAG
 
         Args:
-            filter_tttt: whether filter sgRNAs containing TTTT
+            pams: the PAM to design
 
         Returns:
             None. The results are stored in self.sgrnas
@@ -39,19 +44,92 @@ class Designer:
         for i in range(exon_num):
             exon_seq = self.target_gene.exons.seq[i]
             exon_start = self.target_gene.exons.start[i]
-            sgrnas_ngg = self._design_sgrna_ngg(exon_seq, filter_tttt)
-            sgrnas_nag = self._design_sgrna_nag(exon_seq, filter_tttt)
-            for sgrna in (sgrnas_ngg + sgrnas_nag):
+            sgrnas = []
+            for pam in pams:
+                pam_pattern = self._get_sgrna_pattern(pam)
+                pam_pattern_rc = self._get_sgrna_pattern(
+                    pam, reverse_complement=True)
+                sgrnas += self._design_sgrna(exon_seq, pam_pattern, pam)
+                sgrnas += self._design_sgrna(exon_seq, pam_pattern_rc,
+                                             self._reverse_complement(pam),
+                                             reverse_complement=True)
+            for sgrna in sgrnas:
                 sgrna.chrom = self.target_gene.chrom
                 sgrna.entrez_id = self.target_gene.entrez_id
                 sgrna.exon_id = i
                 sgrna.start += exon_start - self.flank
                 sgrna.end += exon_start - self.flank
-                if sgrna.pam_type == 'NGG' or sgrna.pam_type == 'NAG':
-                    sgrna.cutting_site = sgrna.end - 2.5
-                elif sgrna.pam_type == 'CCN' or sgrna.pam_type == 'CTN':
+                if sgrna.rc:
                     sgrna.cutting_site = sgrna.start + 2.5
+                else:
+                    sgrna.cutting_site = sgrna.end - 2.5
                 self.sgrnas.append(sgrna)
+
+    def _get_sgrna_pattern(self, pam, reverse_complement=False):
+        if reverse_complement:
+            pam = self._reverse_complement(pam)
+            pam_pattern = ''
+            for char in pam:
+                if char == 'N':
+                    pam_pattern += '\w'
+                else:
+                    pam_pattern += char
+            sgrna_pattern = '\w{%d}%s\w{%d}\w{%d}' % (
+                self.sgrna_downstream, pam_pattern,
+                self.sgrna_length, self.sgrna_upstream
+            )
+        else:
+            pam_pattern = ''
+            for char in pam:
+                if char == 'N':
+                    pam_pattern += '\w'
+                else:
+                    pam_pattern += char
+            sgrna_pattern = '\w{%d}\w{%d}%s\w{%d}' % (
+                self.sgrna_upstream, self.sgrna_length,
+                pam_pattern, self.sgrna_downstream
+            )
+        return sgrna_pattern
+
+    def _design_sgrna(self, seq, pam_pattern, pam, reverse_complement=False):
+        sgrna_match = regex.finditer(pam_pattern, seq,
+                                     overlapped=self.overlapped)
+        sgrnas = []
+        for sgrna in sgrna_match:
+            full_seq = sgrna.group()
+            if reverse_complement:
+                sgrna_seq = full_seq[(self.sgrna_downstream +
+                                      len(pam)):-self.sgrna_upstream]
+            else:
+                sgrna_seq = full_seq[self.sgrna_upstream:(self.sgrna_upstream +
+                                                          self.sgrna_length)]
+            if self.filter_tttt:
+                if reverse_complement:
+                    filter_pattern = 'AAAA'
+                else:
+                    filter_pattern = 'TTTT'
+                if sgrna_seq.find(filter_pattern) != -1:
+                    continue
+            if reverse_complement:
+                sgrna_start = sgrna.start() + len(pam) + self.sgrna_downstream
+                sgrna_end = sgrna_start + self.sgrna_length - 1
+                sgrna_cutting_site = sgrna.start() + 2.5
+            else:
+                sgrna_start = sgrna.start() + self.sgrna_upstream
+                sgrna_end = sgrna_start + self.sgrna_length - 1
+                sgrna_cutting_site = sgrna_end - 2.5
+            if (sgrna_cutting_site < self.flank) or \
+                    (sgrna_cutting_site >= (len(seq) - self.flank)):
+                sgrna_type = 'splicing site'
+            else:
+                sgrna_type = 'coding region'
+            sgrnas.append(SgRNA(sequence=sgrna_seq,
+                                cutting_site_type=sgrna_type,
+                                start=sgrna_start, end=sgrna_end,
+                                pam_type=pam,
+                                full_seq=full_seq,
+                                rc=reverse_complement))
+        return sgrnas
 
     def _reverse_complement(self, sgrna_seq):
         """Get reverse complement of sequence
@@ -63,146 +141,6 @@ class Designer:
             str, the reverse complement of input sequence
         """
         return str(Seq(sgrna_seq).reverse_complement())
-
-    def _design_sgrna_ngg(self, seq, filter_tttt=True):
-        return self._ngg(seq, filter_tttt) + self._ccn(seq, filter_tttt)
-
-    def _design_sgrna_nag(self, seq, filter_tttt=True):
-        return self._nag(seq, filter_tttt) + self._ctn(seq, filter_tttt)
-
-    def _ngg(self, seq, filter_tttt=True):
-        """Design sgRNAs with sequence *NGG*
-
-        Args:
-            seq: the sequence to be targeted
-            filter_tttt: whether filter sgRNAs containing TTTT
-
-        Returns:
-            sgrnas, a list of SgRNA object
-        """
-
-        sgrna_match = regex.finditer(
-            '\w{%d}\wGG\w{%d}' % (self.sgrna_upstream, self.sgrna_downstream),
-            seq, overlapped=True)
-        sgrnas = []
-        for sgrna in sgrna_match:
-            sgrna_seq = sgrna.group()[:self.sgrna_upstream]
-            if filter_tttt:
-                if sgrna_seq.find('TTTT') != -1:
-                    continue
-            sgrna_start = sgrna.start()
-            sgrna_end = sgrna_start + self.sgrna_upstream - 1
-            sgrna_cutting_site = sgrna_end - 2.5
-            if (sgrna_cutting_site < self.flank) or \
-                    (sgrna_end >= (len(seq) - self.flank)):
-                sgrna_type = 'splicing site'
-            else:
-                sgrna_type = 'coding region'
-            sgrnas.append(SgRNA(sequence=sgrna_seq,
-                                cutting_site_type=sgrna_type,
-                                start=sgrna_start, end=sgrna_end,
-                                pam_type='NGG'))
-        return sgrnas
-
-    def _ccn(self, seq, filter_tttt=True):
-        """Design sgRNAs with sequence *CCN*
-
-                Args:
-                    seq: the sequence to be targeted
-                    filter_tttt: whether filter sgRNAs containing TTTT
-
-                Returns:
-                    sgrnas, a list of SgRNA object
-                """
-        sgrna_match = regex.finditer(
-            '\w{%d}CC\w\w{%d}' % (self.sgrna_downstream, self.sgrna_upstream),
-            seq, overlapped=True)
-        sgrnas = []
-        for sgrna in sgrna_match:
-            sgrna_seq = sgrna.group()[-self.sgrna_upstream:]
-            if filter_tttt:
-                if sgrna_seq.find('AAAA') != -1:
-                    continue
-            sgrna_start = sgrna.end() - self.sgrna_upstream
-            sgrna_end = sgrna.end() - 1
-            sgrna_cutting_site = sgrna_start + 2.5
-            if (sgrna_cutting_site < self.flank) or \
-                    (sgrna_cutting_site >= (len(seq) - self.flank)):
-                sgrna_type = 'splicing site'
-            else:
-                sgrna_type = 'coding region'
-            sgrnas.append(SgRNA(sequence=sgrna_seq,
-                                cutting_site_type=sgrna_type,
-                                start=sgrna_start, end=sgrna_end,
-                                pam_type='CCN'))
-        return sgrnas
-
-    def _nag(self, seq, filter_tttt=True):
-        """Design sgRNAs with sequence *NAG*
-
-        Args:
-            seq: the sequence to be targeted
-            filter_tttt: whether filter sgRNAs containing TTTT
-
-        Returns:
-            sgrnas, a list of SgRNA object
-        """
-
-        sgrna_match = regex.finditer(
-            '\w{%d}\wAG\w{%d}' % (self.sgrna_upstream, self.sgrna_downstream),
-            seq, overlapped=True)
-        sgrnas = []
-        for sgrna in sgrna_match:
-            sgrna_seq = sgrna.group()[:self.sgrna_upstream]
-            if filter_tttt:
-                if sgrna_seq.find('TTTT') != -1:
-                    continue
-            sgrna_start = sgrna.start()
-            sgrna_end = sgrna_start + self.sgrna_upstream - 1
-            sgrna_cutting_site = sgrna_end - 2.5
-            if (sgrna_cutting_site < self.flank) or \
-                    (sgrna_end >= (len(seq) - self.flank)):
-                sgrna_type = 'splicing site'
-            else:
-                sgrna_type = 'coding region'
-            sgrnas.append(SgRNA(sequence=sgrna_seq,
-                                cutting_site_type=sgrna_type,
-                                start=sgrna_start, end=sgrna_end,
-                                pam_type='NAG'))
-        return sgrnas
-
-    def _ctn(self, seq, filter_tttt=True):
-        """Design sgRNAs with sequence *CTN*
-
-                Args:
-                    seq: the sequence to be targeted
-                    filter_tttt: whether filter sgRNAs containing TTTT
-
-                Returns:
-                    sgrnas, a list of SgRNA object
-                """
-        sgrna_match = regex.finditer(
-            '\w{%d}CT\w\w{%d}' % (self.sgrna_downstream, self.sgrna_upstream),
-            seq, overlapped=True)
-        sgrnas = []
-        for sgrna in sgrna_match:
-            sgrna_seq = sgrna.group()[-self.sgrna_upstream:]
-            if filter_tttt:
-                if sgrna_seq.find('AAAA') != -1:
-                    continue
-            sgrna_start = sgrna.end() - self.sgrna_upstream
-            sgrna_end = sgrna.end() - 1
-            sgrna_cutting_site = sgrna_start + 2.5
-            if (sgrna_cutting_site < self.flank) or \
-                    (sgrna_cutting_site >= (len(seq) - self.flank)):
-                sgrna_type = 'splicing site'
-            else:
-                sgrna_type = 'coding region'
-            sgrnas.append(SgRNA(sequence=sgrna_seq,
-                                cutting_site_type=sgrna_type,
-                                start=sgrna_start, end=sgrna_end,
-                                pam_type='CTN'))
-        return sgrnas
 
     def print(self):
         """Print the sgRNAs
@@ -221,9 +159,14 @@ class Designer:
         """
         flag = True
         for sgrna in self.sgrnas:
+            if sgrna.rc:
+                seq = sgrna.reverse_complement()
+            else:
+                seq = sgrna.sequence
             df_row = [sgrna.entrez_id, sgrna.exon_id, sgrna.chrom, sgrna.start,
                       sgrna.end, sgrna.sequence, sgrna.pam_type,
-                      sgrna.cutting_site_type, sgrna.cutting_site]
+                      sgrna.cutting_site_type, sgrna.cutting_site, seq,
+                      sgrna.full_seq]
             if flag:
                 df = np.asarray(df_row)
                 flag = False
@@ -231,8 +174,8 @@ class Designer:
                 df = np.vstack((df, df_row))
         df = pd.DataFrame(df)
         df.columns = ['entrez_id', 'exon_id', 'chrom', 'start', 'end',
-                      'sequence', 'pam_type', 'cutting_site_type',
-                      'cutting_site']
+                      'raw_sequence', 'pam_type', 'cutting_site_type',
+                      'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
         df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
         return df
 
@@ -313,7 +256,9 @@ class SgRNA:
 
     def __init__(self, sequence=None, pam_type=None, cutting_site_type=None,
                  entrez_id=None, chrom=None, start=None, end=None,
-                 exon_id=None, cutting_site=None):
+                 exon_id=None, cutting_site=None, full_seq=None,
+                 aa_cut=None, per_peptide=None, rs2_score=None,
+                 rc=None):
         """Init
 
         Args:
@@ -324,6 +269,7 @@ class SgRNA:
             chrom: location
             start: start position, 1 based
             end: end position, 1 based
+            rc: if in reverse_complement strand
         """
         self.sequence = sequence
         self.pam_type = pam_type
@@ -334,6 +280,17 @@ class SgRNA:
         self.cutting_site = cutting_site
         self.cutting_site_type = cutting_site_type
         self.exon_id = exon_id
+        self.full_seq = full_seq
+        self.aa_cut = aa_cut
+        self.per_peptide = per_peptide
+        self.rc = rc
+        # compute rs2 score
+        # self.rs2_score = rs2_score
+        # if rs2_score is not None:
+        #     self.rs2_score = rs2_score
+        # else:
+        #     self.rs2_score = compute_rs2(self.sequence, self.aa_cut,
+        #                                  self.per_peptide)
 
     def get_gc_content(self):
         if self.sequence is None:
@@ -343,7 +300,7 @@ class SgRNA:
                           self.sequence.count('C')) / len(self.sequence)
             return gc_content
 
-    def _reverse_complement(self):
+    def reverse_complement(self):
         """Get reverse complement of sequence
 
         Args:
@@ -367,3 +324,8 @@ class SgRNA:
             self.sequence, self.pam_type, self.cutting_site_type,
             self.cutting_site
         ))
+
+    def get_rs2_score(self):
+        assert self.pam_type == 'NGG', 'Only support NGG'
+        assert len(self.full_seq) == 30, 'Have to provide 30mers'
+        return compute_rs2(self.full_seq, self.aa_cut, self.per_peptide)

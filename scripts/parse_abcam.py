@@ -7,7 +7,7 @@ import pandas as pd
 import regex
 
 
-def batch_parse(input_dir, output_path='./output.csv'):
+def batch_parse(input_dir, output_path='./output.txt'):
     """Parse abcam html files
 
     Args:
@@ -18,22 +18,32 @@ def batch_parse(input_dir, output_path='./output.csv'):
         None
     """
     file_path = os.listdir(input_dir)
-    flag = True
+    f_out = open(output_path, 'w', encoding='utf-8')
+    f_out.write('gene_id\tpositive_control\n')
     for i in range(len(file_path)):
         if i % 5000 == 0:
             print('----------{}%'.format(round(i / len(file_path) * 100, 2)))
         single_path = os.path.join(input_dir, file_path[i])
-        positive_controls = get_positive_control(single_path)
-        gene_id = get_entrez_id(single_path)
+        try:
+            positive_controls = get_positive_control(single_path)
+        except:
+            print('Fail to process {}'.format(file_path[i]))
+            continue
+        try:
+            gene_id = get_entrez_id(single_path)
+        except:
+            print('Fail to process {}'.format(file_path[i]))
+            continue
+        if (positive_controls is None) or (gene_id is None) or (gene_id == ''):
+            print('No positive control or gene ID in {}'.format(file_path[i]))
+            continue
         for cell_line in positive_controls:
-            if flag:
-                flag = False
-                output = np.array([gene_id, cell_line])
-            else:
-                output = np.vstack((output, np.array([gene_id, cell_line])))
-    output = pd.DataFrame(output)
-    output.columns = ['gene_id', 'positive_control']
-    output.to_csv(output_path, index=None)
+            line = str(gene_id) + '\t' + cell_line + '\n'
+            f_out.write(line)
+    f_out.close()
+    # output = pd.DataFrame(output)
+    # output.columns = ['gene_id', 'positive_control']
+    # output.to_csv(output_path, index=None)
 
 
 def get_positive_control(html_path):
@@ -55,12 +65,16 @@ def get_positive_control(html_path):
             # split by ','
             cell_lines = text.split(',')
             for i in range(len(cell_lines)):
+                if cell_lines[i] == '':
+                    continue
                 if cell_lines[i][0] == ' ':
                     cell_lines[i] = cell_lines[i][1:]
             # split by 'and'
             for cell_line in cell_lines:
                 cell_line = cell_line.split('and')
                 for sub_cell_line in cell_line:
+                    if sub_cell_line == '':
+                        continue
                     if sub_cell_line[0] == ' ':
                         sub_cell_line = sub_cell_line[1:]
                     if (sub_cell_line[-1] == '.') | (sub_cell_line[-1] == ' '):

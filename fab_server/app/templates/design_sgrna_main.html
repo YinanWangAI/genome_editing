@@ -1,0 +1,33 @@
+{% extends "appbuilder/base.html" %}
+{% block content %}
+    <h1>{{main_title}}</h1>
+
+    <p id="tutorial">
+    Please Enter Entrez IDs of the genes. Also Please choose the PAM sequence,
+    the length of up- and down- stream sequences.
+    </p>
+
+    <form method="post">
+        <textarea name="gene_info" rows="20" cols="160"
+                  placeholder="1464"></textarea><br>
+        PAM:
+        <input type="text" name="PAM" value="NGG" style="width: 90px">
+        Upstream Length:
+        <input type="number" name="upstream_length" value="4" min="0"
+               style="width: 90px">
+        Downstream Length:
+        <input type="number" name="downstream_length" value="3" min="0"
+               style="width: 90px">
+        sgRNA Length:
+        <input type="number" name="sgrna_length" value="20" min="0"
+               style="width: 90px">
+        Flank Length:
+        <input type="number" name="sgrna_length" value="30" min="0"
+               style="width: 90px">
+        Filter TTTT?
+        <input type="radio" name="filter_tttt" value="Yes" checked>Yes
+        <input type="radio" name="filter_tttt" value="No">No
+        <br><br>
+        <input type="submit" value="submit">
+    </form>
+{% endblock %}

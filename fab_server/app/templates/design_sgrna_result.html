@@ -1,0 +1,20 @@
+{% extends "appbuilder/base.html" %}
+{% block content %}
+    <h1>Results</h1>
+
+    <pre id="detail">
+        entrez_id: The Entrez ID of the gene
+        exon_id: The exon id, from 0 to n
+        chrom: Chromosome number
+        start: The start position of sgRNA
+        end: The end position of sgRNA
+        raw sequence: The sequence of sgRNA on the reference genome
+        pam_type: The sequence of PAM
+        cutting_site_type: The type of cutting site, either splicing site or coding region
+        cutting_site: The position of cutting site
+        sgrna_seq: The sequence of sgRNA
+        sgrna_full_seq: The sequence of sgRNA with up- and down- stream sequences
+    </pre>
+
+    <a href="file:///Users/yinan/PycharmProjects/genome_editing/fab_server/results/design_sgrna_output.csv" download>Download</a>
+{% endblock %}

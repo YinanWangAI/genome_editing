@@ -31,6 +31,9 @@ class Designer:
         self.overlapped = overlapped
         self.filter_tttt = filter_tttt
 
+    def __repr__(self):
+        return self.target_gene.entrez_id
+
     def get_sgrnas(self, pams=['NGG', 'NAG']):
         """Get sgRNAs with PAM NGG and NAG
 
@@ -233,6 +236,9 @@ class Gene:
         self.exons_start = np.min(self.exons.start)
         self.exons_end = np.max(self.exons.end)
 
+    def __repr__(self):
+        return self.entrez_id
+
     def get_sequence(self, flank):
         """Get exons' sequences with flank
 
@@ -291,6 +297,9 @@ class SgRNA:
         # else:
         #     self.rs2_score = compute_rs2(self.sequence, self.aa_cut,
         #                                  self.per_peptide)
+
+    def __repr__(self):
+        return self.sequence
 
     def get_gc_content(self):
         if self.sequence is None:

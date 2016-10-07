@@ -63,6 +63,12 @@ class ToolsView(BaseView):
                                   index=None)
         return self.render_template('design_sgrna_result.html')
 
+    @expose('/design_sgrna_output/')
+    def download_design_sgrna_output(self):
+        result_dir = '../results'
+        return send_from_directory(result_dir, 'design_sgrna_output.csv',
+                                   as_attachment=True)
+
     @expose('/Score sgRNA/')
     # @has_access
     def score_sgrna(self):

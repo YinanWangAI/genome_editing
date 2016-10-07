@@ -1,8 +1,12 @@
-{% extends "appbuilder/base.html" %}
-{% block content %}
-    <h1>Results</h1>
+{% extends "base.html" %}
 
-    <pre id="detail">
+{% block title %}Design sgRNA{% endblock %}
+
+{% block page_content %}
+<div class="page-header"><h1>Design sgRNA</h1></div>
+
+<pre id="detail">
+        <strong>Columns: </strong>
         entrez_id: The Entrez ID of the gene
         exon_id: The exon id, from 0 to n
         chrom: Chromosome number
@@ -14,9 +18,9 @@
         cutting_site: The position of cutting site
         sgrna_seq: The sequence of sgRNA
         sgrna_full_seq: The sequence of sgRNA with up- and down- stream sequences
-    </pre>
+</pre>
 
-    <h3>Click Download to download the results</h3>
-
-    <a href="/Tools/design_sgrna_output" download>Download</a>
+<a href=/design_sgrna/{{job_id}} download>
+        <h3>Click to download the results</h3>
+</a>
 {% endblock %}

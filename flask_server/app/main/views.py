@@ -1,13 +1,15 @@
 import sys
 sys.path.append('/Users/yinan/PycharmProjects/')
 import genome_editing.design_sgRNA.design as dsr
+from genome_editing.design_sgRNA.rs2 import compute_rs2_batch
 from flask import Flask, render_template, redirect, url_for, send_from_directory
 from . import main
-from .forms import DesignSgrnaForm
+from .forms import DesignSgrnaForm, ScoreSgrnaForm
 from .. import db
 
 
 JOB_ID = 0
+
 
 @main.route('/')
 def main_page():
@@ -59,6 +61,30 @@ def design_sgrna():
 def design_sgrna_download_link(job_id):
     result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
     file_name = 'design_sgrna_output_' + str(job_id) + '.csv'
+    return send_from_directory(result_dir, file_name, as_attachment=True)
+
+
+@main.route('/score_sgrna/', methods=['GET', 'POST'])
+def score_sgrna():
+    global JOB_ID
+    form = ScoreSgrnaForm()
+
+    if form.validate_on_submit():
+        JOB_ID += 1
+        seqs = form.seqs.data.split('\n')
+        print(seqs)
+        score_sgrna_out = compute_rs2_batch(seqs)
+        output_path = './results/score_sgrna_output_' + str(JOB_ID) + '.csv'
+        score_sgrna_out.to_csv(output_path, index=None)
+        return render_template('score_sgrna_output.html', job_id=JOB_ID)
+    else:
+        return render_template('score_sgrna_input.html', form=form)
+
+
+@main.route('/score_sgrna/<job_id>/')
+def score_sgrna_download_link(job_id):
+    result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    file_name = 'score_sgrna_output_' + str(job_id) + '.csv'
     return send_from_directory(result_dir, file_name, as_attachment=True)
 
 

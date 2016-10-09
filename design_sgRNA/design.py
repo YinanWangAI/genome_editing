@@ -1,5 +1,8 @@
-"""Design sgRNAs for CRISPR/Cas9 gene editing"""
+"""Design sgRNAs for CRISPR/Cas9 gene editing
+Reference Genome: igenome UCSC hg19, start is 0-based
+"""
 from Bio.Seq import Seq
+from Bio.Alphabet import IUPAC
 import numpy as np
 import pandas as pd
 import regex
@@ -10,7 +13,7 @@ from .rs2 import compute_rs2
 class Designer:
     """Design sgRNAs for a target"""
 
-    def __init__(self, entrez_id, sgrna_upstream=4, sgrna_downstream=3,
+    def __init__(self, gene_symbol, sgrna_upstream=4, sgrna_downstream=3,
                  sgrna_length=20, flank=30, overlapped=True, filter_tttt=True):
         """Init
 
@@ -21,7 +24,7 @@ class Designer:
             flank: the length of flank sequence
             overlapped: whether the sgRNAs could be overlapped
         """
-        self.target_gene = Gene(entrez_id)
+        self.target_gene = Gene(gene_symbol.upper())
         self.target_gene.get_sequence(flank)
         self.sgrna_upstream = sgrna_upstream
         self.sgrna_downstream = sgrna_downstream
@@ -32,7 +35,7 @@ class Designer:
         self.filter_tttt = filter_tttt
 
     def __repr__(self):
-        return self.target_gene.entrez_id
+        return self.target_gene.gene_symbol
 
     def get_sgrnas(self, pams=['NGG', 'NAG']):
         """Get sgRNAs with PAM NGG and NAG
@@ -45,7 +48,7 @@ class Designer:
         """
         exon_num = self.target_gene.exons.shape[0]
         for i in range(exon_num):
-            exon_seq = self.target_gene.exons.seq[i]
+            exon_seq = self.target_gene.exons.seq_with_flank[i]
             exon_start = self.target_gene.exons.start[i]
             sgrnas = []
             for pam in pams:
@@ -58,8 +61,8 @@ class Designer:
                                              reverse_complement=True)
             for sgrna in sgrnas:
                 sgrna.chrom = self.target_gene.chrom
-                sgrna.entrez_id = self.target_gene.entrez_id
-                sgrna.exon_id = i
+                sgrna.gene_symbol = self.target_gene.gene_symbol
+                sgrna.exon_id = self.target_gene.exons.exon_id.values[i]
                 sgrna.start += exon_start - self.flank
                 sgrna.end += exon_start - self.flank
                 if sgrna.rc:
@@ -158,7 +161,7 @@ class Designer:
         """Output sgRNAs in a pandas DataFrame
 
         Returns:
-            pd.DataFrame
+            pd.DataFrame, the cord is 0-based, both for start and end
         """
         flag = True
         for sgrna in self.sgrnas:
@@ -166,8 +169,8 @@ class Designer:
                 seq = sgrna.reverse_complement()
             else:
                 seq = sgrna.sequence
-            df_row = [sgrna.entrez_id, sgrna.exon_id, sgrna.chrom, sgrna.start,
-                      sgrna.end, sgrna.sequence, sgrna.pam_type,
+            df_row = [sgrna.gene_symbol, sgrna.exon_id, sgrna.chrom,
+                      sgrna.start, sgrna.end, sgrna.sequence, sgrna.pam_type,
                       sgrna.cutting_site_type, sgrna.cutting_site, seq,
                       sgrna.full_seq]
             if flag:
@@ -176,7 +179,7 @@ class Designer:
             else:
                 df = np.vstack((df, df_row))
         df = pd.DataFrame(df)
-        df.columns = ['entrez_id', 'exon_id', 'chrom', 'start', 'end',
+        df.columns = ['gene_symbol', 'exon_id', 'chrom', 'start', 'end',
                       'raw_sequence', 'pam_type', 'cutting_site_type',
                       'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
         df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
@@ -206,12 +209,51 @@ class Designer:
             print(exon_with_cutting)
             print('\n\n\n\n')
 
+    def aa_coverage(self, affect_size=5):
+        gene_info = self.target_gene.gene_info
+        sgrna_info = self.output()
+        exon_info = self.target_gene.exons
+        aa_info = self.target_gene.get_aa_info()
+
+        # aa starts from 0
+        coverage_dict = {}
+        amino_acid_len = aa_info.shape[0]
+        codon_0 = aa_info.codon_0.values
+        codon_1 = aa_info.codon_1.values
+        codon_2 = aa_info.codon_2.values
+
+        for i in range(amino_acid_len):
+            coverage_dict[i] = 0
+
+        for i in range(sgrna_info.shape[0]):
+            exon_id = int(sgrna_info.exon_id.values[i])
+            cutting_site = np.int(np.floor(sgrna_info.cutting_site.values[i]))
+            exon_start = np.int(
+                exon_info[exon_info.exon_id == exon_id].start.values[0])
+            exon_end = np.int(
+                exon_info[exon_info.exon_id == exon_id].end.values[0] - 1)
+
+            cutting_start = max(exon_start, cutting_site - affect_size)
+            cutting_end = min(exon_end, cutting_site + affect_size)
+            cutting_range = np.arange(cutting_start, cutting_end + 1)
+
+            comp_0 = np.where(np.asarray(
+                [x in cutting_range for x in codon_0]) == True)[0]
+            comp_1 = np.where(np.asarray(
+                [x in cutting_range for x in codon_1]) == True)[0]
+            comp_2 = np.where(np.asarray(
+                [x in cutting_range for x in codon_2]) == True)[0]
+
+            for aa_pos in np.concatenate((comp_0, comp_1, comp_2)):
+                coverage_dict[aa_pos] += 1
+        return coverage_dict
+
 
 class Gene:
     """The gene to be edited"""
 
-    def __init__(self, entrez_id,
-                 table_name='grch38_exon',
+    def __init__(self, gene_symbol,
+                 table_name='igenome_ucsc_hg19_refgene',
                  engine=sqlalchemy.create_engine(
                      'postgresql://yinan:123456@localhost/genome_editing')
                  ):
@@ -222,22 +264,47 @@ class Gene:
             table_name: the table in the database storing exon information
             engine: sqlalchemy engine
         """
-        self.entrez_id = entrez_id
-        query = "SELECT * FROM {} WHERE entrez_id='{}'".format(table_name,
-                                                               str(entrez_id))
+        self.gene_symbol = gene_symbol.upper()
+        query = "SELECT * FROM {} WHERE name2='{}'".format(table_name,
+                                                           self.gene_symbol)
         self.engine = engine
-        self.exons = pd.read_sql_query(
-            query, self.engine).drop_duplicates().sort_values('start')
-        self.exons.index = range(self.exons.shape[0])
-        self.chrom = list(set(self.exons.loc[:, 'chrom'].values))
+
+        self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
+        self.exons = self._get_exon_info()
+
+        self.chrom = list(set(self.gene_info.loc[:, 'chrom'].values))
         assert len(self.chrom) == 1, print('Multiple chromosomes')
         self.chrom = self.chrom[0]
-        self.gene_symbol = list(set(self.exons.gene_symbol.values))
-        self.exons_start = np.min(self.exons.start)
-        self.exons_end = np.max(self.exons.end)
 
     def __repr__(self):
-        return self.entrez_id
+        return self.gene_symbol
+
+    def _get_exon_info(self):
+        exon_count = self.gene_info.exonCount.values[0]
+        exon_starts = np.asarray(
+            self.gene_info.exonStarts.values[0].split(',')[:exon_count],
+            dtype=np.int)
+        exon_ends = np.asarray(
+            self.gene_info.exonEnds.values[0].split(',')[:exon_count],
+            dtype=np.int)
+
+        exons = pd.DataFrame(np.empty(shape=(exon_count, 5)))
+        exons.columns = ['refseq_id', 'gene_symbol', 'exon_id', 'start', 'end']
+        exons.loc[:, 'refseq_id'] = self.gene_info.name.values
+        exons.loc[:, 'gene_symbol'] = self.gene_info.name2.values
+        exons.loc[:, 'start'] = exon_starts
+        exons.loc[:, 'end'] = exon_ends
+        exons = exons.sort_values(by='start')
+        exons.index = range(exons.shape[0])
+
+        if self.gene_info.strand.values[0] == '+':
+            exons.loc[:, 'exon_id'] = list(range(1, exon_count + 1))
+        else:
+            temp = list(range(1, exon_count + 1))
+            temp.reverse()
+            exons.loc[:, 'exon_id'] = temp
+
+        return exons
 
     def get_sequence(self, flank):
         """Get exons' sequences with flank
@@ -248,20 +315,75 @@ class Gene:
         Returns:
             None, the results are stored in self.exons
         """
-        self.exons.loc[:, 'seq'] = ''
-        table_name = 'grch38_' + self.chrom
+        self.exons.loc[:, 'seq_with_flank'] = ''
+        self.exons.loc[:, 'flank'] = flank
+        table_name = 'igenome_ucsc_hg19_' + self.chrom
         chrom_seq = pd.read_sql(table_name, self.engine).iloc[0, 0]
         for i in range(self.exons.shape[0]):
+            # NOTE: start is 0-based but end  is 1-based
             start = self.exons.loc[:, 'start'].values[i] - flank
             end = self.exons.loc[:, 'end'].values[i] + flank
-            self.exons.loc[i, 'seq'] = chrom_seq[(start - 1):end].upper()
+            self.exons.loc[i, 'seq_with_flank'] = \
+                chrom_seq[start:end].upper()
+
+    def get_aa_info(self):
+        exon_count = self.gene_info.exonCount.values[0]
+        exon_starts = np.asarray(
+            self.gene_info.exonStarts.values[0].split(',')[:exon_count],
+            dtype=np.int)
+        exon_ends = np.asarray(
+            self.gene_info.exonEnds.values[0].split(',')[:exon_count],
+            dtype=np.int)
+        cds_start = self.gene_info.cdsStart.values[0]
+        cds_end = self.gene_info.cdsEnd.values[0]
+        cds_start_exon_index = list(
+            (cds_start >= exon_starts) & (cds_start <= exon_ends)).index(True)
+        cds_end_exon_index = list(
+            (cds_end >= exon_starts) & (cds_end <= exon_ends)).index(True)
+        cds_starts = exon_starts[
+                     cds_start_exon_index:(cds_end_exon_index + 1)].copy()
+        cds_ends = exon_ends[
+                   cds_start_exon_index:(cds_end_exon_index + 1)].copy()
+        cds_starts[0] = cds_start
+        cds_ends[-1] = cds_end
+        table_name = 'igenome_ucsc_hg19_' + self.chrom
+        chrom_seq = pd.read_sql(table_name, self.engine).iloc[0, 0]
+        seq = ''
+        coord = []
+        for i in range(len(cds_starts)):
+            start = cds_starts[i]
+            end = cds_ends[i]
+            seq += chrom_seq[start:end].upper()
+            coord += range(start, end)
+
+        if self.gene_info.strand.values[0] == '+':
+            coding_dna = Seq(seq, IUPAC.unambiguous_dna)
+        else:
+            coding_dna = Seq(seq, IUPAC.unambiguous_dna).reverse_complement()
+            coord.reverse()
+        protein_seq = str(coding_dna.translate())
+
+        aa_info = pd.DataFrame(np.zeros(shape=[len(protein_seq), 5]))
+        aa_info.columns = ['amino_acid', 'codon_0', 'codon_1', 'codon_2',
+                           'aa_index']
+        pointer = 0
+        for i in range(len(protein_seq)):
+            aa_info.loc[i, 'amino_acid'] = protein_seq[i]
+            aa_coord = coord[pointer:(pointer + 3)]
+            aa_info.loc[i, 'codon_0'] = int(aa_coord[0])
+            aa_info.loc[i, 'codon_1'] = int(aa_coord[1])
+            aa_info.loc[i, 'codon_2'] = int(aa_coord[2])
+            pointer += 3
+        aa_info.loc[:, 'aa_index'] = list(range(aa_info.shape[0]))
+
+        return aa_info
 
 
 class SgRNA:
     """SgRNA targeting a region of the genome"""
 
     def __init__(self, sequence=None, pam_type=None, cutting_site_type=None,
-                 entrez_id=None, chrom=None, start=None, end=None,
+                 gene_symbol=None, chrom=None, start=None, end=None,
                  exon_id=None, cutting_site=None, full_seq=None,
                  aa_cut=None, per_peptide=None, rs2_score=None,
                  rc=None):
@@ -279,7 +401,7 @@ class SgRNA:
         """
         self.sequence = sequence
         self.pam_type = pam_type
-        self.entrez_id = entrez_id
+        self.gene_symbol = gene_symbol
         self.chrom = chrom
         self.start = start
         self.end = end

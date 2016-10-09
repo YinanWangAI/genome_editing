@@ -20,3 +20,11 @@ class DesignSgrnaForm(Form):
     filter_tttt = SelectField('Filter TTTT?',
                               choices=[('Yes', 'Yes'), ('No', 'No')])
     submit = SubmitField('Submit')
+
+
+class ScoreSgrnaForm(Form):
+    seqs = TextAreaField('sgRNA Sequences', validators=[data_required()],
+                         render_kw={'rows':5})
+    score_algo = SelectField('Score Algorithm',
+                             choices=[('rs2', 'rs2')])
+    submit = SubmitField('Submit')

@@ -119,7 +119,7 @@ class Designer:
             if reverse_complement:
                 sgrna_start = sgrna.start() + len(pam) + self.sgrna_downstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
-                sgrna_cutting_site = sgrna.start() + 2.5
+                sgrna_cutting_site = sgrna_start + 2.5
             else:
                 sgrna_start = sgrna.start() + self.sgrna_upstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
@@ -128,7 +128,7 @@ class Designer:
                     (sgrna_cutting_site >= (len(seq) - self.flank)):
                 sgrna_type = 'splicing site'
             else:
-                sgrna_type = 'coding region'
+                sgrna_type = 'exon region'
             sgrnas.append(SgRNA(sequence=sgrna_seq,
                                 cutting_site_type=sgrna_type,
                                 start=sgrna_start, end=sgrna_end,
@@ -183,12 +183,13 @@ class Designer:
                       'raw_sequence', 'pam_type', 'cutting_site_type',
                       'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
         df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
+        df.loc[:, 'sgrna_id'] = np.arange(0, df.shape[0])
         return df
 
     def print_cutting_site(self):
         sgrnas_df = self.output()
         cutting_site_coding = sgrnas_df[
-            sgrnas_df.cutting_site_type == 'coding region']
+            sgrnas_df.cutting_site_type == 'exon region']
         for i in range(self.target_gene.exons.shape[0]):
             exon_start = self.target_gene.exons.start[i]
             exon_seq = self.target_gene.exons.seq[i][self.flank:-self.flank]
@@ -209,23 +210,40 @@ class Designer:
             print(exon_with_cutting)
             print('\n\n\n\n')
 
-    def aa_coverage(self, affect_size=5):
-        gene_info = self.target_gene.gene_info
+    def get_coverage_dict(self, affect_size=5):
+        """The coverage of aa
+
+        Args:
+            affect_size: the up- and down- stream size from sgRNA cutting site
+             which could be affected
+
+        Returns:
+            coverage_dict, a dict contains the coverage of each aa
+        """
+
+        # gene_info = self.target_gene.gene_info
         sgrna_info = self.output()
         exon_info = self.target_gene.exons
         aa_info = self.target_gene.get_aa_info()
 
         # aa starts from 0
-        coverage_dict = {}
+        aa_dict = {}
+        sgrna_dict = {}
         amino_acid_len = aa_info.shape[0]
         codon_0 = aa_info.codon_0.values
         codon_1 = aa_info.codon_1.values
         codon_2 = aa_info.codon_2.values
 
-        for i in range(amino_acid_len):
-            coverage_dict[i] = 0
+        sgrna_ids = sgrna_info.sgrna_id.values
 
+        for i in range(amino_acid_len):
+            aa_dict[i] = []
+        for sgrna_id in sgrna_ids:
+            sgrna_dict[sgrna_id] = []
+
+        # TODO: aa_dict and sgrna_dict
         for i in range(sgrna_info.shape[0]):
+            sgrna_id = sgrna_ids[i]
             exon_id = int(sgrna_info.exon_id.values[i])
             cutting_site = np.int(np.floor(sgrna_info.cutting_site.values[i]))
             exon_start = np.int(
@@ -244,10 +262,79 @@ class Designer:
             comp_2 = np.where(np.asarray(
                 [x in cutting_range for x in codon_2]) == True)[0]
 
-            for aa_pos in np.concatenate((comp_0, comp_1, comp_2)):
-                coverage_dict[aa_pos] += 1
-        return coverage_dict
+            # coverage_sites = set(np.concatenate((comp_0, comp_1, comp_2)))
+            # sgrna_info.loc[i, 'coverage_sites'] = coverage_sites
 
+            for aa_pos in set(np.concatenate((comp_0, comp_1, comp_2))):
+                sgrna_dict[sgrna_id].append(aa_pos)
+                if sgrna_id not in aa_dict[aa_pos]:
+                    aa_dict[aa_pos].append(sgrna_id)
+
+        return [aa_dict, sgrna_dict]
+
+    def select_sgrna(self, max_coverage=10, min_coverage=5):
+        """Select sgRNAs for screening, for sites with more than max_coverage
+        sgRNAs covered, the priorities are:
+        1. NGG with high score
+        2. NGG without TTTT
+        3. NGG
+        4. NAG without TTTT
+        5. NAG
+
+        Args:
+            max_coverage: max coverage
+
+        Returns:
+
+        """
+        aa_dict, sgrna_dict = self.get_coverage_dict()
+
+        # Identify sgRNAs target at least one sgRNA
+        sgrna_target_aa = []
+        for key in sgrna_dict.keys():
+            if len(sgrna_dict[key]) != 0:
+                sgrna_target_aa.append(key)
+
+        sgrna_info = self.output()
+        sgrna_target_aa_info = sgrna_info[
+            sgrna_info.sgrna_id.isin(sgrna_target_aa)]
+
+        rm_sgrna_ids = []
+        for key in aa_dict.keys():
+            # identify aa with more than max_coverage coverage
+            if len(aa_dict[key]) > max_coverage:
+                # get sgRNA ids and sort by PAM types
+                sgrna_ids = aa_dict[key]
+                sub_info = sgrna_target_aa_info[
+                    sgrna_target_aa_info.sgrna_id.isin(sgrna_ids)]
+                sgrna_ids = sub_info[
+                                sub_info.pam_type.isin(['NAG', 'CTN'])].append(
+                    sub_info[sub_info.pam_type.isin(['NGG', 'CCN'])]).loc[:,
+                            'sgrna_id'].values
+
+                max_rm_num = len(sgrna_ids) - max_coverage
+                rm_num = 0
+
+                # test each sgRNA
+                for sgrna_id in sgrna_ids:
+                    cover_aa = sgrna_dict[sgrna_id]
+                    flag = True
+                    for aa in cover_aa:
+                        if (len(aa_dict[aa]) - 1) < min_coverage:
+                            flag = False
+                            break
+                    if flag:
+                        rm_sgrna_ids.append(sgrna_id)
+                        sgrna_target_aa.remove(sgrna_id)
+                        # update each aa's targeting sgRNA
+                        for aa in cover_aa:
+                            aa_dict[aa].remove(sgrna_id)
+                        rm_num += 1
+                        if rm_num >= max_rm_num:
+                            break
+
+        return sgrna_target_aa_info[
+            sgrna_target_aa_info.sgrna_id.isin(sgrna_target_aa)]
 
 class Gene:
     """The gene to be edited"""
@@ -270,11 +357,15 @@ class Gene:
         self.engine = engine
 
         self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
-        self.exons = self._get_exon_info()
+        # only retain the longest transcript
+        if self.gene_info.shape[0] != 1:
+            exon_nums = self.gene_info.exonCount.values
+            index = np.where(exon_nums == max(exon_nums))[0][0]
+            self.gene_info = pd.DataFrame(
+                self.gene_info.iloc[index, :]).transpose()
 
-        self.chrom = list(set(self.gene_info.loc[:, 'chrom'].values))
-        assert len(self.chrom) == 1, print('Multiple chromosomes')
-        self.chrom = self.chrom[0]
+        self.exons = self._get_exon_info()
+        self.chrom = self.gene_info.loc[:, 'chrom'].values[0]
 
     def __repr__(self):
         return self.gene_symbol
@@ -392,7 +483,7 @@ class SgRNA:
         Args:
             sequence: sgRNA sequence
             type: the type of sgRNA,
-            (3'UTR, 5'UTR, splicing site, coding region)
+            (3'UTR, 5'UTR, splicing site, exon region)
             gene_id: the gene to be targeted
             chrom: location
             start: start position, 1 based

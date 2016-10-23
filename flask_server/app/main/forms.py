@@ -5,7 +5,7 @@ from wtforms.validators import data_required
 
 
 class DesignSgrnaForm(Form):
-    gene_ids = TextAreaField('Entrez IDs', validators=[data_required()],
+    gene_symbols = TextAreaField('Gene Symbols', validators=[data_required()],
                              render_kw={'rows':3})
     pams = StringField('PAM', validators=[data_required()],
                        render_kw={'value':'NGG'})
@@ -19,6 +19,8 @@ class DesignSgrnaForm(Form):
                              render_kw={'value': 30})
     filter_tttt = SelectField('Filter TTTT?',
                               choices=[('Yes', 'Yes'), ('No', 'No')])
+    only_target_aa = SelectField('Only Target Amino Acid?',
+                                 choices=[('Yes', 'Yes'), ('No', 'No')])
     submit = SubmitField('Submit')
 
 

@@ -1,19 +1,22 @@
 """Design sgRNAs for CRISPR/Cas9 gene editing
 Reference Genome: igenome UCSC hg19, start is 0-based
 """
-from Bio.Seq import Seq
-from Bio.Alphabet import IUPAC
 import numpy as np
 import pandas as pd
 import regex
 import sqlalchemy
-from .rs2 import compute_rs2
+from Bio.Alphabet import IUPAC
+from Bio.Seq import Seq
+
+from genome_editing.score_sgrna.rs2 import compute_rs2
+from ..utils import alignment
 
 
 class Designer:
     """Design sgRNAs for a target"""
 
-    def __init__(self, gene_symbol, sgrna_upstream=4, sgrna_downstream=3,
+    def __init__(self, gene_symbol=None, refseq_id=None,
+                 sgrna_upstream=4, sgrna_downstream=3,
                  sgrna_length=20, flank=30, overlapped=True, filter_tttt=True):
         """Init
 
@@ -24,8 +27,16 @@ class Designer:
             flank: the length of flank sequence
             overlapped: whether the sgRNAs could be overlapped
         """
-        self.target_gene = Gene(gene_symbol.upper())
-        self.target_gene.get_sequence(flank)
+        if refseq_id is not None:
+            self.target_gene = Transcript(refseq_id)
+            self.target_gene.get_sequence(flank)
+        elif gene_symbol is not None:
+            self.target_gene = Gene(gene_symbol.upper())
+            self.target_gene.get_sequence(flank)
+        # else:
+        #     raise BaseException('Error: please provide either gene symbol or'
+        #                         'refseq ID')
+
         self.sgrna_upstream = sgrna_upstream
         self.sgrna_downstream = sgrna_downstream
         self.sgrna_length = sgrna_length
@@ -62,6 +73,7 @@ class Designer:
             for sgrna in sgrnas:
                 sgrna.chrom = self.target_gene.chrom
                 sgrna.gene_symbol = self.target_gene.gene_symbol
+                sgrna.refseq_id = self.target_gene.refseq_id
                 sgrna.exon_id = self.target_gene.exons.exon_id.values[i]
                 sgrna.start += exon_start - self.flank
                 sgrna.end += exon_start - self.flank
@@ -169,7 +181,8 @@ class Designer:
                 seq = sgrna.reverse_complement()
             else:
                 seq = sgrna.sequence
-            df_row = [sgrna.gene_symbol, sgrna.exon_id, sgrna.chrom,
+            df_row = [sgrna.gene_symbol, sgrna.refseq_id, sgrna.exon_id,
+                      sgrna.chrom,
                       sgrna.start, sgrna.end, sgrna.sequence, sgrna.pam_type,
                       sgrna.cutting_site_type, sgrna.cutting_site, seq,
                       sgrna.full_seq]
@@ -179,7 +192,8 @@ class Designer:
             else:
                 df = np.vstack((df, df_row))
         df = pd.DataFrame(df)
-        df.columns = ['gene_symbol', 'exon_id', 'chrom', 'start', 'end',
+        df.columns = ['gene_symbol', 'refseq_id', 'exon_id', 'chrom', 'start',
+                      'end',
                       'raw_sequence', 'pam_type', 'cutting_site_type',
                       'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
         df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
@@ -336,6 +350,7 @@ class Designer:
         return sgrna_target_aa_info[
             sgrna_target_aa_info.sgrna_id.isin(sgrna_target_aa)]
 
+
 class Gene:
     """The gene to be edited"""
 
@@ -364,6 +379,7 @@ class Gene:
             self.gene_info = pd.DataFrame(
                 self.gene_info.iloc[index, :]).transpose()
 
+        self.refseq_id = self.gene_info.name.values[0]
         self.exons = self._get_exon_info()
         self.chrom = self.gene_info.loc[:, 'chrom'].values[0]
 
@@ -477,7 +493,7 @@ class SgRNA:
                  gene_symbol=None, chrom=None, start=None, end=None,
                  exon_id=None, cutting_site=None, full_seq=None,
                  aa_cut=None, per_peptide=None, rs2_score=None,
-                 rc=None):
+                 rc=None, refseq_id=None):
         """Init
 
         Args:
@@ -503,6 +519,7 @@ class SgRNA:
         self.aa_cut = aa_cut
         self.per_peptide = per_peptide
         self.rc = rc
+        self.refseq_id = refseq_id
         # compute rs2 score
         # self.rs2_score = rs2_score
         # if rs2_score is not None:
@@ -551,3 +568,96 @@ class SgRNA:
         assert self.pam_type == 'NGG', 'Only support NGG'
         assert len(self.full_seq) == 30, 'Have to provide 30mers'
         return compute_rs2(self.full_seq, self.aa_cut, self.per_peptide)
+
+    def get_offtarget_info(self):
+        return alignment.bowtie_alignment(self.sequence + self.pam_type,
+                                          report_all=True)
+
+
+class Transcript(Gene):
+
+    def __init__(self, refseq_id,
+                 table_name='igenome_ucsc_hg19_refgene',
+                 engine=sqlalchemy.create_engine(
+                     'postgresql://yinan:123456@localhost/genome_editing')
+                 ):
+        """Init
+
+        Args:
+            entrez_id: the ENTREZ ID of the gene
+            table_name: the table in the database storing exon information
+            engine: sqlalchemy engine
+        """
+        self.refseq_id = refseq_id.upper()
+        query = "SELECT * FROM {} WHERE name='{}'".format(table_name,
+                                                           self.refseq_id)
+        self.engine = engine
+
+        self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
+        self.gene_symbol = self.gene_info.name2.values[0]
+        self.exons = self._get_exon_info()
+        self.chrom = self.gene_info.loc[:, 'chrom'].values[0]
+
+    def __repr__(self):
+        return self.refseq_id
+
+
+class SeqDesigner(Designer):
+
+    def __init__(self, seq):
+        super(SeqDesigner, self).__init__()
+        self.seq = seq.upper()
+
+    def __repr__(self):
+        return 'SeqDesigner'
+
+    def get_sgrnas(self, pams=['NGG', 'NAG']):
+        """Get sgRNAs with PAM NGG and NAG
+
+        Args:
+            pams: the PAM to design
+
+        Returns:
+            None. The results are stored in self.sgrnas
+        """
+        sgrnas = []
+        for pam in pams:
+            pam_pattern = self._get_sgrna_pattern(pam)
+            pam_pattern_rc = self._get_sgrna_pattern(
+                pam, reverse_complement=True)
+            sgrnas += self._design_sgrna(self.seq, pam_pattern, pam)
+            sgrnas += self._design_sgrna(self.seq, pam_pattern_rc,
+                                         self._reverse_complement(pam),
+                                         reverse_complement=True)
+        for sgrna in sgrnas:
+            if sgrna.rc:
+                sgrna.cutting_site = sgrna.start + 2.5
+            else:
+                sgrna.cutting_site = sgrna.end - 2.5
+            self.sgrnas.append(sgrna)
+
+    def output(self):
+        """Output sgRNAs in a pandas DataFrame
+
+        Returns:
+            pd.DataFrame, the cord is 0-based, both for start and end
+        """
+        flag = True
+        for sgrna in self.sgrnas:
+            if sgrna.rc:
+                seq = sgrna.reverse_complement()
+            else:
+                seq = sgrna.sequence
+            df_row = [sgrna.start, sgrna.end, sgrna.sequence, sgrna.pam_type,
+                      sgrna.cutting_site, seq, sgrna.full_seq]
+            if flag:
+                df = np.asarray(df_row)
+                flag = False
+            else:
+                df = np.vstack((df, df_row))
+        df = pd.DataFrame(df)
+        df.columns = ['start', 'end', 'raw_sequence', 'pam_type',
+                      'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
+        df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
+        df.loc[:, 'sgrna_id'] = np.arange(0, df.shape[0])
+        return df

@@ -1,7 +1,7 @@
 import sys
 sys.path.append('/Users/yinan/PycharmProjects/')
 import genome_editing.design_sgRNA.design as dsr
-from genome_editing.design_sgRNA.rs2 import compute_rs2_batch
+from genome_editing.score_sgrna.rs2 import compute_rs2_batch
 from flask import Flask, render_template, redirect, url_for, send_from_directory
 from . import main
 from .forms import DesignSgrnaForm, ScoreSgrnaForm

@@ -49,7 +49,7 @@ def generate_neg_control(num, length, pam='', off_targets=2,
         random_seq += pam
         alignment_info = alignment.bowtie_alignment(
             seq=random_seq, report_all=False, off_targets=off_targets,
-            bowtie_index_path=BOWTIE_INDEX_PATH)
+            bowtie_index_path=bowtie_index_path)
         if alignment_info.iloc[:, 1].values == 4:
             if random_seq[:length] not in neg_controls:
                 if f:

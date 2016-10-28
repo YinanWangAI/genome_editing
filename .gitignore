@@ -3,4 +3,5 @@ test/*
 *.ipynb
 .ipynb_checkpoints/*
 tmp/*
-
+__pychche__/*
+*/__pycache__/*

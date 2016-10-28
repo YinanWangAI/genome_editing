@@ -15,6 +15,7 @@ from ..utils import alignment
 
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 
+
 class Designer:
     """Design sgRNAs for a target"""
 
@@ -633,9 +634,7 @@ class Transcript(Gene):
 
     def __init__(self, refseq_id,
                  table_name='igenome_ucsc_hg19_refgene',
-                 engine=sqlalchemy.create_engine(
-                     'postgresql://yinan:123456@localhost/genome_editing')
-                 ):
+                 uri=GENOME_EDITING_URI):
         """Init
 
         Args:
@@ -646,7 +645,7 @@ class Transcript(Gene):
         self.refseq_id = refseq_id.upper()
         query = "SELECT * FROM {} WHERE name='{}'".format(table_name,
                                                            self.refseq_id)
-        self.engine = engine
+        self.engine = sqlalchemy.create_engine(uri)
 
         self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
         self.gene_symbol = self.gene_info.name2.values[0]

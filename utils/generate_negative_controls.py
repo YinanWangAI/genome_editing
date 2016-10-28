@@ -19,13 +19,16 @@ def generate_random_sgrna(upstream=20, downstream=0):
     return random_seq
 
 
-def generate_neg_control(num, length, pam, seed=None, file_path=None):
+def generate_neg_control(num, length, pam='', off_targets=2,
+                         seed=None, file_path=None):
     # set seed
     np.random.seed(seed)
 
     # open file
     if file_path is not None:
         f = open(file_path, 'a')
+    else:
+        f = None
 
     # generate negative controls
     neg_controls = []
@@ -55,4 +58,4 @@ def generate_neg_control(num, length, pam, seed=None, file_path=None):
 
 
 if __name__ == '__main__':
-    generate_neg_control(num=10, length=20, pam='NGG')
+    print(generate_neg_control(num=10, length=20, pam=''))

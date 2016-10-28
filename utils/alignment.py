@@ -1,6 +1,10 @@
 """Align sequences to reference genome"""
+import os
 import pandas as pd
 import subprocess
+import tempfile
+
+BOWTIE_INDEX_PATH = os.getenv('BOWTIE_INDEX_PATH')
 
 
 def bowtie2_alignment(seq=None, input_file=None, mode='seq', report_all=True):
@@ -45,11 +49,11 @@ def bowtie2_alignment(seq=None, input_file=None, mode='seq', report_all=True):
         return 1
 
 
-def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True):
-    bowtie_index_path = \
-        '/Users/yinan/Research/weilab/reference_genome/igenome/UCSC/hg19/BowtieIndex/genome'
-    alignment_out_path = \
-        '/Users/yinan/PycharmProjects/genome_editing/tmp/alignment_tmp.sam'
+def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True,
+                     bowtie_index_path=BOWTIE_INDEX_PATH,
+                     off_targets=2):
+    temp_file = tempfile.NamedTemporaryFile()
+    alignment_out_path = temp_file.name
 
     if report_all:
         cmd_prefix = 'bowtie -a '
@@ -58,12 +62,12 @@ def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True):
 
     if mode == 'seq':
         assert seq is not None, 'Please provide sequence'
-        cmd = cmd_prefix + '-p 2 -n 3 -l 23 ' + \
+        cmd = cmd_prefix + '-p 2 -n ' + str(off_targets) + ' -l 23 ' + \
               bowtie_index_path + ' -c ' + seq + \
               ' -S ' + alignment_out_path
     elif mode == 'file':  # TODO: not supported by now
         assert input_file is not None, 'Please provide file'
-        cmd = cmd_prefix + '-p 2 -n 3 -l 23 ' + \
+        cmd = cmd_prefix + '-p 2 -n ' + str(off_targets) + ' -l 23 ' + \
               bowtie_index_path + ' ' + seq + \
               ' -S ' + alignment_out_path
     else:

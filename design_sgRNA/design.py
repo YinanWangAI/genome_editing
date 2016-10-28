@@ -12,8 +12,8 @@ from Bio.Seq import Seq
 from genome_editing.score_sgrna.rs2 import compute_rs2
 from ..utils import alignment
 
-GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 
+GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 
 class Designer:
     """Design sgRNAs for a target"""

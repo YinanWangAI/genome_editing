@@ -1,10 +1,15 @@
+import pandas as pd
 import sqlalchemy
+import os
+
+
+GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 
 
 def gene_symbol_to_refseq(
         genes,
         table_name='igenome_ucsc_hg19_refgene',
-        uri='postgresql://yinan:123456@localhost/genome_editing'):
+        uri=GENOME_EDITING_URI):
     """Convert gene symbol to Refseq ID
 
     Args:

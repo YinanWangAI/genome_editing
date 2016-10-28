@@ -1,6 +1,7 @@
 """Design sgRNAs for CRISPR/Cas9 gene editing
 Reference Genome: igenome UCSC hg19, start is 0-based
 """
+import os
 import numpy as np
 import pandas as pd
 import regex
@@ -11,21 +12,26 @@ from Bio.Seq import Seq
 from genome_editing.score_sgrna.rs2 import compute_rs2
 from ..utils import alignment
 
+GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
+
 
 class Designer:
     """Design sgRNAs for a target"""
 
     def __init__(self, gene_symbol=None, refseq_id=None,
                  sgrna_upstream=4, sgrna_downstream=3,
-                 sgrna_length=20, flank=30, overlapped=True, filter_tttt=True):
-        """Init
+                 sgrna_length=20, flank=30, overlapped=True, filter_tttt=False):
+        """
 
         Args:
-            entrez_id: the Entrez ID of target gene
-            sgrna_upstream: the length of sgRNA upstream
-            sgrna_downstream: the length of sgRNA downstream
-            flank: the length of flank sequence
-            overlapped: whether the sgRNAs could be overlapped
+            gene_symbol: official gene symbol
+            refseq_id: refseq ID
+            sgrna_upstream: the length of upstream base pairs
+            sgrna_downstream: the length of downstream base pairs
+            sgrna_length: the length of sgRNA
+            flank: the length of flank aroung each exon
+            overlapped: whether find overlopped sgRNAs
+            filter_tttt: whether filter sgRNAs containing TTTT
         """
         if refseq_id is not None:
             self.target_gene = Transcript(refseq_id)
@@ -49,13 +55,13 @@ class Designer:
         return self.target_gene.gene_symbol
 
     def get_sgrnas(self, pams=['NGG', 'NAG']):
-        """Get sgRNAs with PAM NGG and NAG
+        """Get sgRNAs targeting input genes or transcript
 
         Args:
-            pams: the PAM to design
+            pams: the pattern of PAM
 
         Returns:
-            None. The results are stored in self.sgrnas
+            None, update self.sgrnas, which contain a list of SgRNA objects
         """
         exon_num = self.target_gene.exons.shape[0]
         for i in range(exon_num):
@@ -84,6 +90,15 @@ class Designer:
                 self.sgrnas.append(sgrna)
 
     def _get_sgrna_pattern(self, pam, reverse_complement=False):
+        """Generate re pattern of input PAM sequence
+
+        Args:
+            pam: the PAM sequence
+            reverse_complement: whether consider reverse complement of PAM
+
+        Returns:
+            re pattern to find sgRNA
+        """
         if reverse_complement:
             pam = self._reverse_complement(pam)
             pam_pattern = ''
@@ -110,6 +125,17 @@ class Designer:
         return sgrna_pattern
 
     def _design_sgrna(self, seq, pam_pattern, pam, reverse_complement=False):
+        """Design sgRNAs based on re
+
+        Args:
+            seq: the sequence to be searched on
+            pam_pattern: the search pattern
+            pam: the PAM sequence
+            reverse_complement: whether search reverse_complement of pattern
+
+        Returns:
+            a list of SgRNA object containing information for designed sgRNAs
+        """
         sgrna_match = regex.finditer(pam_pattern, seq,
                                      overlapped=self.overlapped)
         sgrnas = []
@@ -160,14 +186,14 @@ class Designer:
         """
         return str(Seq(sgrna_seq).reverse_complement())
 
-    def print(self):
-        """Print the sgRNAs
-
-        Returns:
-            None
-        """
-        for sgrna in self.sgrnas:
-            sgrna.print()
+    # def print(self):
+    #     """Print the sgRNAs
+    #
+    #     Returns:
+    #         None
+    #     """
+    #     for sgrna in self.sgrnas:
+    #         sgrna.print()
 
     def output(self):
         """Output sgRNAs in a pandas DataFrame
@@ -200,29 +226,29 @@ class Designer:
         df.loc[:, 'sgrna_id'] = np.arange(0, df.shape[0])
         return df
 
-    def print_cutting_site(self):
-        sgrnas_df = self.output()
-        cutting_site_coding = sgrnas_df[
-            sgrnas_df.cutting_site_type == 'exon region']
-        for i in range(self.target_gene.exons.shape[0]):
-            exon_start = self.target_gene.exons.start[i]
-            exon_seq = self.target_gene.exons.seq[i][self.flank:-self.flank]
-            exon_cutting_site = np.floor(
-                cutting_site_coding[
-                    cutting_site_coding.exon_id == str(i)].cutting_site.values)
-            exon_cutting_site = exon_cutting_site - exon_start
-            exon_cutting_site.sort()
-            exon_with_cutting = ''
-            break_start = 0
-            for cut_index in exon_cutting_site:
-                break_end = int(cut_index) + 1
-                exon_with_cutting = exon_with_cutting + \
-                                    exon_seq[break_start:break_end] + '    '
-                break_start = break_end
-            exon_with_cutting = exon_with_cutting + exon_seq[break_start:]
-            print('exon id: {}'.format(i))
-            print(exon_with_cutting)
-            print('\n\n\n\n')
+    # def print_cutting_site(self):
+    #     sgrnas_df = self.output()
+    #     cutting_site_coding = sgrnas_df[
+    #         sgrnas_df.cutting_site_type == 'exon region']
+    #     for i in range(self.target_gene.exons.shape[0]):
+    #         exon_start = self.target_gene.exons.start[i]
+    #         exon_seq = self.target_gene.exons.seq[i][self.flank:-self.flank]
+    #         exon_cutting_site = np.floor(
+    #             cutting_site_coding[
+    #                 cutting_site_coding.exon_id == str(i)].cutting_site.values)
+    #         exon_cutting_site = exon_cutting_site - exon_start
+    #         exon_cutting_site.sort()
+    #         exon_with_cutting = ''
+    #         break_start = 0
+    #         for cut_index in exon_cutting_site:
+    #             break_end = int(cut_index) + 1
+    #             exon_with_cutting = exon_with_cutting + \
+    #                                 exon_seq[break_start:break_end] + '    '
+    #             break_start = break_end
+    #         exon_with_cutting = exon_with_cutting + exon_seq[break_start:]
+    #         print('exon id: {}'.format(i))
+    #         print(exon_with_cutting)
+    #         print('\n\n\n\n')
 
     def get_coverage_dict(self, affect_size=5):
         """The coverage of aa
@@ -299,7 +325,7 @@ class Designer:
             max_coverage: max coverage
 
         Returns:
-
+            pandas DataFrame containing informatio of selected sgRNAs
         """
         aa_dict, sgrna_dict = self.get_coverage_dict()
 
@@ -356,20 +382,18 @@ class Gene:
 
     def __init__(self, gene_symbol,
                  table_name='igenome_ucsc_hg19_refgene',
-                 engine=sqlalchemy.create_engine(
-                     'postgresql://yinan:123456@localhost/genome_editing')
-                 ):
-        """Init
+                 uri=GENOME_EDITING_URI):
+        """
 
         Args:
-            entrez_id: the ENTREZ ID of the gene
-            table_name: the table in the database storing exon information
-            engine: sqlalchemy engine
+            gene_symbol: gene symbol
+            table_name: the table name in db containing gene annotation
+            engine: sqla engine
         """
         self.gene_symbol = gene_symbol.upper()
         query = "SELECT * FROM {} WHERE name2='{}'".format(table_name,
                                                            self.gene_symbol)
-        self.engine = engine
+        self.engine = sqlalchemy.create_engine(uri)
 
         self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
         # only retain the longest transcript
@@ -387,6 +411,11 @@ class Gene:
         return self.gene_symbol
 
     def _get_exon_info(self):
+        """Query exon information of the gene
+
+        Returns:
+            a DataFrame containing exon informations
+        """
         exon_count = self.gene_info.exonCount.values[0]
         exon_starts = np.asarray(
             self.gene_info.exonStarts.values[0].split(',')[:exon_count],
@@ -434,6 +463,12 @@ class Gene:
                 chrom_seq[start:end].upper()
 
     def get_aa_info(self):
+        """Amino acid information of the gene
+
+        Returns:
+            DataFrame
+        """
+
         exon_count = self.gene_info.exonCount.values[0]
         exon_starts = np.asarray(
             self.gene_info.exonStarts.values[0].split(',')[:exon_count],
@@ -494,18 +529,26 @@ class SgRNA:
                  exon_id=None, cutting_site=None, full_seq=None,
                  aa_cut=None, per_peptide=None, rs2_score=None,
                  rc=None, refseq_id=None):
-        """Init
+        """
 
         Args:
             sequence: sgRNA sequence
-            type: the type of sgRNA,
-            (3'UTR, 5'UTR, splicing site, exon region)
-            gene_id: the gene to be targeted
-            chrom: location
-            start: start position, 1 based
-            end: end position, 1 based
-            rc: if in reverse_complement strand
+            pam_type: PAM sequence
+            cutting_site_type: coding region or splicing site
+            gene_symbol: gene symbol
+            chrom: chromosome
+            start: start position, 0 based
+            end: end position, 0 based
+            exon_id: exon ID
+            cutting_site: the position of cutting site
+            full_seq: full sequence of sgRNA including up- and down- stream
+            aa_cut: cut position
+            per_peptide: cut peptide position
+            rs2_score: rs2 score
+            rc:
+            refseq_id: refseq ID
         """
+
         self.sequence = sequence
         self.pam_type = pam_type
         self.gene_symbol = gene_symbol
@@ -532,6 +575,11 @@ class SgRNA:
         return self.sequence
 
     def get_gc_content(self):
+        """GC content of the sgRNA
+
+        Returns:
+            GC content
+        """
         if self.sequence is None:
             return None
         else:
@@ -542,34 +590,41 @@ class SgRNA:
     def reverse_complement(self):
         """Get reverse complement of sequence
 
-        Args:
-            sgrna_seq: sequence
-
         Returns:
             str, the reverse complement of input sequence
         """
         return str(Seq(self.sequence).reverse_complement())
 
-    def print(self):
-        """Print the SgRNA object
-
-        Returns:
-            None
-        """
-        print('entrez_id: {}, exon_id: {}, chrom: {}, start: {}, end: {}, '
-              'sequence: {}, PAM_type: {}, cutting_site_type: {}, '
-              'cutting_site: {}'.format(
-            self.entrez_id, self.exon_id, self.chrom, self.start, self.end,
-            self.sequence, self.pam_type, self.cutting_site_type,
-            self.cutting_site
-        ))
+    # def print(self):
+    #     """Print the SgRNA object
+    #
+    #     Returns:
+    #         None
+    #     """
+    #     print('entrez_id: {}, exon_id: {}, chrom: {}, start: {}, end: {}, '
+    #           'sequence: {}, PAM_type: {}, cutting_site_type: {}, '
+    #           'cutting_site: {}'.format(
+    #         self.entrez_id, self.exon_id, self.chrom, self.start, self.end,
+    #         self.sequence, self.pam_type, self.cutting_site_type,
+    #         self.cutting_site
+    #     ))
 
     def get_rs2_score(self):
+        """Compute rs2 score of the sgRNA
+
+        Returns:
+            rs2 score
+        """
         assert self.pam_type == 'NGG', 'Only support NGG'
         assert len(self.full_seq) == 30, 'Have to provide 30mers'
         return compute_rs2(self.full_seq, self.aa_cut, self.per_peptide)
 
     def get_offtarget_info(self):
+        """Get multiple target information of the sgRNA
+
+        Returns:
+            DataFrame
+        """
         return alignment.bowtie_alignment(self.sequence + self.pam_type,
                                           report_all=True)
 
@@ -605,6 +660,12 @@ class Transcript(Gene):
 class SeqDesigner(Designer):
 
     def __init__(self, seq):
+        """
+
+        Args:
+            seq: sequence to be designed
+        """
+
         super(SeqDesigner, self).__init__()
         self.seq = seq.upper()
 

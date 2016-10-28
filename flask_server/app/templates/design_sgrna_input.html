@@ -6,5 +6,37 @@
 {% block page_content %}
 <div class="page-header"><h1>Design sgRNA</h1></div>
 
-{{ wtf.quick_form(form, form_type="basic")}}
+<!--{{ wtf.quick_form(form, form_type="basic")}}-->
+<form>
+    <div class="row">
+        <div class="form-group col-sm-8">
+            {{ wtf.form_field(form.design_input) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.pams) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.sgrna_len) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.upstream_len) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.downstream_len) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.flank_len) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.filter_tttt) }}
+        </div>
+        <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.only_target_aa) }}
+        </div>
+        <div class="form-group col-sm-4">
+            {{ wtf.form_field(form.submit) }}
+        </div>
+    </div>
+</form>
+
 {% endblock %}

@@ -5,8 +5,9 @@ from wtforms.validators import data_required
 
 
 class DesignSgrnaForm(Form):
-    gene_symbols = TextAreaField('Gene Symbols', validators=[data_required()],
-                             render_kw={'rows':3})
+    design_input = TextAreaField('Gene Symbols/Refseq IDs/Sequences',
+                                 validators=[data_required()],
+                                 render_kw={'rows': 18})
     pams = StringField('PAM', validators=[data_required()],
                        render_kw={'value':'NGG'})
     upstream_len = IntegerField('Upstream Length',

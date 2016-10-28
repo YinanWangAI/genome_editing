@@ -1,5 +1,9 @@
+import os
 import numpy as np
 from genome_editing.utils import alignment
+
+
+BOWTIE_INDEX_PATH = os.getenv('BOWTIE_INDEX_PATH')
 
 
 def generate_random_sgrna(upstream=20, downstream=0):
@@ -20,7 +24,8 @@ def generate_random_sgrna(upstream=20, downstream=0):
 
 
 def generate_neg_control(num, length, pam='', off_targets=2,
-                         seed=None, file_path=None):
+                         seed=None, file_path=None,
+                         bowtie_index_path=BOWTIE_INDEX_PATH):
     # set seed
     np.random.seed(seed)
 
@@ -42,8 +47,9 @@ def generate_neg_control(num, length, pam='', off_targets=2,
 
         # alignment
         random_seq += pam
-        alignment_info = alignment.bowtie_alignment(seq=random_seq,
-                                                    report_all=False)
+        alignment_info = alignment.bowtie_alignment(
+            seq=random_seq, report_all=False, off_targets=off_targets,
+            bowtie_index_path=BOWTIE_INDEX_PATH)
         if alignment_info.iloc[:, 1].values == 4:
             if random_seq[:length] not in neg_controls:
                 if f:

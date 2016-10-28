@@ -62,12 +62,12 @@ def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True,
 
     if mode == 'seq':
         assert seq is not None, 'Please provide sequence'
-        cmd = cmd_prefix + '-p 2 -n ' + str(off_targets) + ' -l 23 ' + \
+        cmd = cmd_prefix + '-p 4 -n ' + str(off_targets) + ' -l 23 ' + \
               bowtie_index_path + ' -c ' + seq + \
               ' -S ' + alignment_out_path
     elif mode == 'file':  # TODO: not supported by now
         assert input_file is not None, 'Please provide file'
-        cmd = cmd_prefix + '-p 2 -n ' + str(off_targets) + ' -l 23 ' + \
+        cmd = cmd_prefix + '-p 4 -n ' + str(off_targets) + ' -l 23 ' + \
               bowtie_index_path + ' ' + seq + \
               ' -S ' + alignment_out_path
     else:

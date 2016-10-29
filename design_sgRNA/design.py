@@ -14,6 +14,8 @@ from ..utils import alignment
 
 
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
+CHROMS = ['chr' + str(x) for x in range(1, 23)]
+CHROMS += ['chrX', 'chrY', 'chrM']
 
 
 class Designer:
@@ -646,8 +648,12 @@ class Transcript(Gene):
         query = "SELECT * FROM {} WHERE name='{}'".format(table_name,
                                                            self.refseq_id)
         self.engine = sqlalchemy.create_engine(uri)
-
         self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
+
+        # map到多个位置，保留经典染色体上的信息
+        if self.gene_info.shape[0] > 1:
+            self.gene_info = self.gene_info[self.gene_info.chrom.isin(CHROMS)]
+
         self.gene_symbol = self.gene_info.name2.values[0]
         self.exons = self._get_exon_info()
         self.chrom = self.gene_info.loc[:, 'chrom'].values[0]

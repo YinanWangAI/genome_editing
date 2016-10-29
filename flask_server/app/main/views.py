@@ -22,16 +22,24 @@ def design_sgrna():
     form = DesignSgrnaForm()
     if form.validate_on_submit():
         JOB_ID += 1
-        gene_ids = form.gene_ids.data.split('\n')
+
+        input_type = form.input_type.data
+        design_inputs = form.design_input.data
         upstream_len = form.upstream_len.data
         downstream_len = form.downstream_len.data
         flank_len = form.flank_len.data
         sgrna_len = form.sgrna_len.data
         pam = form.pams.data
-        if form.filter_tttt.data == 'Yes':
-            filter_tttt = True
+
+        if input_type == 'Gene Symbol':
+            gene_ids = design_inputs.split('\n')
+        elif input_type == 'Refseq ID':
+            refseq_ids = design_inputs.split('\n')
         else:
-            filter_tttt = False
+            seq = design_inputs.split('\n')
+            assert len(seq) == 1, "Too many sequences"
+            seq = seq[0]
+
 
         flag = True
         for gene_id in gene_ids:

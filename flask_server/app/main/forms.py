@@ -8,8 +8,7 @@ class DesignSgrnaForm(Form):
     design_input = TextAreaField('Gene Symbols/Refseq IDs/Sequences',
                                  validators=[data_required()],
                                  render_kw={'rows': 18})
-    pams = StringField('PAM', validators=[data_required()],
-                       render_kw={'value':'NGG'})
+    pams = SelectField('PAM', choices=[('NGG', 'NGG'), ('NAG', 'NAG')])
     upstream_len = IntegerField('Upstream Length',
                                 render_kw={'value': 4})
     downstream_len = IntegerField('Downstream Length',
@@ -22,6 +21,10 @@ class DesignSgrnaForm(Form):
                               choices=[('Yes', 'Yes'), ('No', 'No')])
     only_target_aa = SelectField('Only Target Amino Acid?',
                                  choices=[('Yes', 'Yes'), ('No', 'No')])
+    input_type = SelectField('Input Type',
+                             choices=[('Gene Symbol', 'Gene Symbol'),
+                                      ('Refseq ID', 'Refseq ID'),
+                                      ('Sequence', 'Sequence')])
     submit = SubmitField('Submit')
 
 

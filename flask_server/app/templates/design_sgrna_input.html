@@ -13,6 +13,9 @@
             {{ wtf.form_field(form.design_input) }}
         </div>
         <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.input_type) }}
+        </div>
+        <div class="form-group col-sm-2">
             {{ wtf.form_field(form.pams) }}
         </div>
         <div class="form-group col-sm-2">
@@ -26,9 +29,6 @@
         </div>
         <div class="form-group col-sm-2">
             {{ wtf.form_field(form.flank_len) }}
-        </div>
-        <div class="form-group col-sm-2">
-            {{ wtf.form_field(form.filter_tttt) }}
         </div>
         <div class="form-group col-sm-2">
             {{ wtf.form_field(form.only_target_aa) }}

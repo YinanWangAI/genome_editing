@@ -12,7 +12,7 @@ class Config:
 
 class DevelopmentConfig(Config):
     debug = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('POSTGRESQL_URI')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('GENOME_EDITING_URI')
 
 
 

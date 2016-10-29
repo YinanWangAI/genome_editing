@@ -650,9 +650,10 @@ class Transcript(Gene):
         self.engine = sqlalchemy.create_engine(uri)
         self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
 
-        # map到多个位置，保留经典染色体上的信息
+        # map到多个位置，保留经典染色体上的信息，如果仍有重复，则根据第一个计算
         if self.gene_info.shape[0] > 1:
             self.gene_info = self.gene_info[self.gene_info.chrom.isin(CHROMS)]
+            self.gene_info = self.gene_info.iloc[0:1, :]
 
         self.gene_symbol = self.gene_info.name2.values[0]
         self.exons = self._get_exon_info()

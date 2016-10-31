@@ -12,7 +12,6 @@ from Bio.Seq import Seq
 from genome_editing.score_sgrna.rs2 import compute_rs2
 from ..utils import alignment
 
-
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 CHROMS = ['chr' + str(x) for x in range(1, 23)]
 CHROMS += ['chrX', 'chrY', 'chrM']
@@ -633,7 +632,6 @@ class SgRNA:
 
 
 class Transcript(Gene):
-
     def __init__(self, refseq_id,
                  table_name='igenome_ucsc_hg19_refgene',
                  uri=GENOME_EDITING_URI):
@@ -646,7 +644,7 @@ class Transcript(Gene):
         """
         self.refseq_id = refseq_id.upper()
         query = "SELECT * FROM {} WHERE name='{}'".format(table_name,
-                                                           self.refseq_id)
+                                                          self.refseq_id)
         self.engine = sqlalchemy.create_engine(uri)
         self.gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
 
@@ -664,15 +662,20 @@ class Transcript(Gene):
 
 
 class SeqDesigner(Designer):
-
-    def __init__(self, seq):
+    def __init__(self, seq, sgrna_upstream=4, sgrna_downstream=3,
+                 sgrna_length=20, flank=30, overlapped=True, filter_tttt=False):
         """
 
         Args:
             seq: sequence to be designed
         """
 
-        super(SeqDesigner, self).__init__()
+        super(SeqDesigner, self).__init__(sgrna_upstream=sgrna_upstream,
+                                          sgrna_downstream=sgrna_downstream,
+                                          sgrna_length=sgrna_length,
+                                          flank=flank,
+                                          overlapped=overlapped,
+                                          filter_tttt=filter_tttt)
         self.seq = seq.upper()
 
     def __repr__(self):

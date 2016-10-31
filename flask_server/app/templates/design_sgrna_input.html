@@ -6,8 +6,8 @@
 {% block page_content %}
 <div class="page-header"><h1>Design sgRNA</h1></div>
 
-<!--{{ wtf.quick_form(form, form_type="basic")}}-->
-<form>
+<form method="post">
+    {{ form.csrf_token }}
     <div class="row">
         <div class="form-group col-sm-8">
             {{ wtf.form_field(form.design_input) }}
@@ -16,16 +16,13 @@
             {{ wtf.form_field(form.input_type) }}
         </div>
         <div class="form-group col-sm-2">
+            {{ wtf.form_field(form.ref_genome) }}
+        </div>
+        <div class="form-group col-sm-2">
             {{ wtf.form_field(form.pams) }}
         </div>
         <div class="form-group col-sm-2">
             {{ wtf.form_field(form.sgrna_len) }}
-        </div>
-        <div class="form-group col-sm-2">
-            {{ wtf.form_field(form.upstream_len) }}
-        </div>
-        <div class="form-group col-sm-2">
-            {{ wtf.form_field(form.downstream_len) }}
         </div>
         <div class="form-group col-sm-2">
             {{ wtf.form_field(form.flank_len) }}

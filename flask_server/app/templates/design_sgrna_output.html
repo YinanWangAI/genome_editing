@@ -3,24 +3,76 @@
 {% block title %}Design sgRNA{% endblock %}
 
 {% block page_content %}
-<div class="page-header"><h1>Design sgRNA</h1></div>
 
-<pre id="detail">
-        <strong>Columns: </strong>
-        entrez_id: The Entrez ID of the gene
-        exon_id: The exon id, from 0 to n
-        chrom: Chromosome number
-        start: The start position of sgRNA
-        end: The end position of sgRNA
-        raw sequence: The sequence of sgRNA on the reference genome
-        pam_type: The sequence of PAM
-        cutting_site_type: The type of cutting site, either splicing site or coding region
-        cutting_site: The position of cutting site
-        sgrna_seq: The sequence of sgRNA
-        sgrna_full_seq: The sequence of sgRNA with up- and down- stream sequences
-</pre>
-
+<div class="jumbotron">
 <a href=/design_sgrna/{{job_id}} download>
-        <h3>Click here to download the results</h3>
+    <h3>Click here to download the results</h3>
 </a>
+
+
+<div class="panel panel-default">
+    <div class="panel-heading">Schema</div>
+    <table class="table">
+        <tr>
+            <th>gene_symbol</th>
+            <th>Official gene symbol</th>
+        </tr>
+        <tr>
+            <th>refseq_id</th>
+            <th>The Refseq ID of the gene</th>
+        </tr>
+        <tr>
+            <th>gene_symbol</th>
+            <th>Official gene symbol</th>
+        </tr>
+        <tr>
+            <th>exon_id</th>
+            <th>The exon id, from 0 to n</th>
+        </tr>
+        <tr>
+            <th>chrom</th>
+            <th>Chromosome number</th>
+        </tr>
+        <tr>
+            <th>start</th>
+            <th>The start position of sgRNA</th>
+        </tr>
+        <tr>
+            <th>end</th>
+            <th>The end position of sgRNA</th>
+        </tr>
+        <tr>
+            <th>raw sequence</th>
+            <th>The sequence of sgRNA on the reference genome</th>
+        </tr>
+        <tr>
+            <th>pam_type</th>
+            <th>The sequence of PAM</th>
+        </tr>
+        <tr>
+            <th>cutting_site_type</th>
+            <th>The type of cutting site, UTR, coding region or
+                intron region near splicing site (within 10bp of splicing site)
+            </th>
+        </tr>
+        <tr>
+            <th>cutting_site</th>
+            <th>The position of cutting site</th>
+        </tr>
+        <tr>
+            <th>sgrna_seq</th>
+            <th>The sequence of sgRNA</th>
+        </tr>
+        <tr>
+            <th>sgrna_full_seq</th>
+            <th>The sequence of sgRNA with 4bp upstream and 3bp downstream</th>
+        </tr>
+        <tr>
+            <th>sgrna_id</th>
+            <th>sgrna ID, unique within each transcript</th>
+        </tr>
+    </table>
+</div>
+</div>
+
 {% endblock %}

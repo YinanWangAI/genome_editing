@@ -66,9 +66,13 @@ class Designer:
             None, update self.sgrnas, which contain a list of SgRNA objects
         """
         exon_num = self.target_gene.exons.shape[0]
+        cds_start = self.target_gene.cds_start[0]
+        cds_end = self.target_gene.cds_end[0]
+
         for i in range(exon_num):
             exon_seq = self.target_gene.exons.seq_with_flank[i]
             exon_start = self.target_gene.exons.start[i]
+            exon_end = self.target_gene.exons.end[i]
             sgrnas = []
             for pam in pams:
                 pam_pattern = self._get_sgrna_pattern(pam)
@@ -85,10 +89,24 @@ class Designer:
                 sgrna.exon_id = self.target_gene.exons.exon_id.values[i]
                 sgrna.start += exon_start - self.flank
                 sgrna.end += exon_start - self.flank
+
                 if sgrna.rc:
                     sgrna.cutting_site = sgrna.start + 2.5
                 else:
                     sgrna.cutting_site = sgrna.end - 2.5
+
+                # print(sgrna.cutting_site)
+                # print(cds_start)
+                # print(cds_end)
+
+                if (sgrna.cutting_site < cds_start) or \
+                        (sgrna.cutting_site > cds_end):
+                    sgrna.cutting_site_type = 'UTR'
+                elif (sgrna.cutting_site >= exon_start) and \
+                        (sgrna.cutting_site <= exon_end):
+                    sgrna.cutting_site_type = 'coding_region'
+                else:
+                    sgrna.cutting_site_type = 'intron_region_near_splicing_sites'
                 self.sgrnas.append(sgrna)
 
     def _get_sgrna_pattern(self, pam, reverse_complement=False):
@@ -164,13 +182,13 @@ class Designer:
                 sgrna_start = sgrna.start() + self.sgrna_upstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
                 sgrna_cutting_site = sgrna_end - 2.5
-            if (sgrna_cutting_site < self.flank) or \
-                    (sgrna_cutting_site >= (len(seq) - self.flank)):
-                sgrna_type = 'splicing site'
-            else:
-                sgrna_type = 'exon region'
+            # if (sgrna_cutting_site < self.flank) or \
+            #         (sgrna_cutting_site >= (len(seq) - self.flank)):
+            #     sgrna_type = 'splicing site'
+            # else:
+            #     sgrna_type = 'exon region'
             sgrnas.append(SgRNA(sequence=sgrna_seq,
-                                cutting_site_type=sgrna_type,
+                                cutting_site_type=None,
                                 start=sgrna_start, end=sgrna_end,
                                 pam_type=pam,
                                 full_seq=full_seq,
@@ -408,6 +426,8 @@ class Gene:
         self.refseq_id = self.gene_info.name.values[0]
         self.exons = self._get_exon_info()
         self.chrom = self.gene_info.loc[:, 'chrom'].values[0]
+        self.cds_start = self.gene_info.cdsStart.values
+        self.cds_end = self.gene_info.cdsEnd.values
 
     def __repr__(self):
         return self.gene_symbol
@@ -521,6 +541,9 @@ class Gene:
         aa_info.loc[:, 'aa_index'] = list(range(aa_info.shape[0]))
 
         return aa_info
+
+    def get_cds_info(self):
+        pass
 
 
 class SgRNA:
@@ -656,6 +679,8 @@ class Transcript(Gene):
         self.gene_symbol = self.gene_info.name2.values[0]
         self.exons = self._get_exon_info()
         self.chrom = self.gene_info.loc[:, 'chrom'].values[0]
+        self.cds_start = self.gene_info.cdsStart.values
+        self.cds_end = self.gene_info.cdsEnd.values
 
     def __repr__(self):
         return self.refseq_id

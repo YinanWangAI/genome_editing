@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Negative Controls{% endblock %}
+
+{% block page_content %}
+<div class="page-header"><h1>Negative Controls</h1></div>
+
+<div class="jumbotron">
+<div class="panel panel-default">
+    <table class="table" rules="cols">
+        <tr>
+            <th>
+                Number of negative controls
+            </th>
+            <th>
+                5000 for each reference genome
+            </th>
+        </tr>
+        <tr>
+            <th>
+                Sequence length
+            </th>
+            <th>
+                20
+            </th>
+        </tr>
+        <tr>
+            <th>
+                Minimum number of mismatches
+            </th>
+            <th>
+                2
+            </th>
+        </tr>
+    </table>
+</div>
+
+<h3>Click the buttons blow to download the negative controls.</h3>
+</div>
+
+    <div class="row">
+    <div class="col-sm-4 btn-group">
+        <a class="btn btn-block btn-primary" href=/negative_controls/hg19 download>
+            <h3>hg19</h3>
+        </a>
+    </div>
+
+    <div class="col-sm-4">
+        <a class="btn btn-block btn-primary" href=/negative_controls/hg38 download>
+            <h3>hg38</h3>
+        </a>
+    </div>
+
+    <div class="col-sm-4">
+        <a class="btn btn-block btn-primary" href=/negative_controls/mm10 download>
+            <h3>mm10</h3>
+        </a>
+    </div>
+    </div>
+
+
+{% endblock %}

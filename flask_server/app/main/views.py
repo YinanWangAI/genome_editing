@@ -7,7 +7,7 @@ from . import main
 from .forms import DesignSgrnaForm, ScoreSgrnaForm
 from .. import db
 from ..models import SgrnaDesign
-from genome_editing.utils.utilities import model_to_df, coordinate_sgrna
+from genome_editing.utils.utilities import model_to_df
 
 
 JOB_ID = 0
@@ -30,9 +30,10 @@ def design_sgrna():
         design_inputs = form.design_input.data
         # upstream_len = form.upstream_len.data
         # downstream_len = form.downstream_len.data
-        flank_len = form.flank_len.data
-        sgrna_len = form.sgrna_len.data
+        # flank_len = form.flank_len.data
+        # sgrna_len = form.sgrna_len.data
         pam = form.pams.data
+        ref_genome = form.ref_genome.data
 
         # TODO: support different up-, down- stream and sgRNA length
         if input_type == 'Gene Symbol':
@@ -57,11 +58,7 @@ def design_sgrna():
             seq = design_inputs.split('\n')
             assert len(seq) == 1, "Too many sequences"
             seq = seq[0]
-            sgrna_design = dsr.SeqDesigner(seq=seq,
-                                           sgrna_upstream=upstream_len,
-                                           sgrna_downstream=downstream_len,
-                                           sgrna_length=sgrna_len,
-                                           flank=flank_len)
+            sgrna_design = dsr.SeqDesigner(seq=seq)
             sgrna_design.get_sgrnas(pams=[pam])
             sgrna_designer_out = sgrna_design.output()
 
@@ -100,6 +97,32 @@ def score_sgrna():
 def score_sgrna_download_link(job_id):
     result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
     file_name = 'score_sgrna_output_' + str(job_id) + '.csv'
+    return send_from_directory(result_dir, file_name, as_attachment=True)
+
+
+@main.route('/negative_controls/')
+def negative_controls():
+    return render_template('negative_controls.html')
+
+
+@main.route('/negative_controls/hg19')
+def neg_ctrl_hg19():
+    result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    file_name = 'hg19_negative_controls.csv'
+    return send_from_directory(result_dir, file_name, as_attachment=True)
+
+
+@main.route('/negative_controls/hg38')
+def neg_ctrl_hg38():
+    result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    file_name = 'hg38_negative_controls.csv'
+    return send_from_directory(result_dir, file_name, as_attachment=True)
+
+
+@main.route('/negative_controls/mm10')
+def neg_ctrl_mm10():
+    result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    file_name = 'mm10_negative_controls.csv'
     return send_from_directory(result_dir, file_name, as_attachment=True)
 
 

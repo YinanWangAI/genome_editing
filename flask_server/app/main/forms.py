@@ -7,7 +7,7 @@ from wtforms.validators import DataRequired
 class DesignSgrnaForm(Form):
     design_input = TextAreaField('Gene Symbols/Refseq IDs/Sequences',
                                  validators=[DataRequired()],
-                                 render_kw={'rows': 18})
+                                 render_kw={'rows': 15})
     pams = SelectField('PAM', choices=[('NGG', 'NGG'), ('NAG', 'NAG')],
                        validators=[DataRequired()])
     ref_genome = SelectField('Reference Genome',
@@ -20,17 +20,17 @@ class DesignSgrnaForm(Form):
     # downstream_len = IntegerField('Downstream Length',
     #                               render_kw={'value': 3},
     #                               validators=[DataRequired()])
-    sgrna_len = IntegerField('sgRNA Length',
-                             render_kw={'value': 20},
-                             validators=[DataRequired()])
-    flank_len = IntegerField('Flank Length',
-                             render_kw={'value': 30},
-                             validators=[DataRequired()])
+    # sgrna_len = IntegerField('sgRNA Length',
+    #                          render_kw={'value': 20},
+    #                          validators=[DataRequired()])
+    # flank_len = IntegerField('Flank Length',
+    #                          render_kw={'value': 30},
+    #                          validators=[DataRequired()])
     # filter_tttt = SelectField('Filter TTTT?',
     #                           choices=[('Yes', 'Yes'), ('No', 'No')])
-    only_target_aa = SelectField('Only Target Amino Acid?',
-                                 choices=[('Yes', 'Yes'), ('No', 'No')],
-                                 validators=[DataRequired()])
+    # only_target_aa = SelectField('Only Target Amino Acid?',
+    #                              choices=[('Yes', 'Yes'), ('No', 'No')],
+    #                              validators=[DataRequired()])
     input_type = SelectField('Input Type',
                              choices=[('Gene Symbol', 'Gene Symbol'),
                                       ('Refseq ID', 'Refseq ID'),

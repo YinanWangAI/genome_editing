@@ -3,7 +3,7 @@ import numpy as np
 from genome_editing.utils import alignment
 
 
-BOWTIE_INDEX_PATH = os.getenv('BOWTIE_INDEX_PATH')
+HG19_BOWTIE_INDEX_PATH = os.getenv('BOWTIE_INDEX_PATH')
 
 
 def generate_random_sgrna(upstream=20, downstream=0):
@@ -25,7 +25,7 @@ def generate_random_sgrna(upstream=20, downstream=0):
 
 def generate_neg_control(num, length, pam='', off_targets=2,
                          seed=None, file_path=None,
-                         bowtie_index_path=BOWTIE_INDEX_PATH):
+                         bowtie_index_path=HG19_BOWTIE_INDEX_PATH):
     # set seed
     np.random.seed(seed)
 

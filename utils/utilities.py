@@ -1,3 +1,4 @@
+from Bio.Seq import Seq
 import numpy as np
 import pandas as pd
 import sqlalchemy
@@ -95,3 +96,7 @@ def coordinate_sgrna(df, my_up, my_down, my_sgrna_len):
             df.loc[i, 'sgrna_seq'] = new_sgrna_seq
             df.loc[i, 'sgrna_full_seq'] = new_sgrna_full_seq
     return df
+
+
+def reverse_complement(nt_seq):
+    return str(Seq(nt_seq).reverse_complement())

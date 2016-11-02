@@ -7,7 +7,7 @@ from . import main
 from .forms import DesignSgrnaForm, ScoreSgrnaForm
 from .. import db
 from ..models import SgrnaDesign
-from genome_editing.utils.utilities import model_to_df
+from genome_editing.utils.utilities import model_to_df, reverse_complement
 
 
 JOB_ID = 0
@@ -33,15 +33,18 @@ def design_sgrna():
         # flank_len = form.flank_len.data
         # sgrna_len = form.sgrna_len.data
         pam = form.pams.data
+        pam_rc = reverse_complement(pam)
         ref_genome = form.ref_genome.data
 
-        # TODO: support different up-, down- stream and sgRNA length
+
         if input_type == 'Gene Symbol':
             gene_symbols = design_inputs.split('\n')
             gene_symbols = [x.strip() for x in gene_symbols]
             print(gene_symbols)
             query_out = SgrnaDesign.query.filter(
-                SgrnaDesign.gene_symbol.in_(gene_symbols)).all()
+                SgrnaDesign.gene_symbol.in_(gene_symbols)).filter(
+                SgrnaDesign.pam_type.in_([pam, pam_rc])
+            ).all()
             sgrna_designer_out = model_to_df(query_out)
             # sgrna_designer_out = coordinate_sgrna(
             #     sgrna_designer_out, upstream_len, downstream_len, sgrna_len)
@@ -50,7 +53,9 @@ def design_sgrna():
             refseq_ids = [x.strip() for x in refseq_ids]
             print(refseq_ids)
             query_out = SgrnaDesign.query.filter(
-                SgrnaDesign.refseq_id.in_(refseq_ids)).all()
+                SgrnaDesign.refseq_id.in_(refseq_ids)).filter(
+                SgrnaDesign.pam_type.in_([pam, pam_rc])
+            ).all()
             sgrna_designer_out = model_to_df(query_out)
             # sgrna_designer_out = coordinate_sgrna(
             #     sgrna_designer_out, upstream_len, downstream_len, sgrna_len)

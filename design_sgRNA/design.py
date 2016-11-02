@@ -12,6 +12,7 @@ from Bio.Seq import Seq
 from genome_editing.score_sgrna.rs2 import compute_rs2
 from ..utils import alignment
 
+
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 CHROMS = ['chr' + str(x) for x in range(1, 23)]
 CHROMS += ['chrX', 'chrY', 'chrM']

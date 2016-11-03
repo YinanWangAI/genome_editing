@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import sqlalchemy
 import os
+import PIL.Image as Im
 
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 UPSTREAM = 4
@@ -100,3 +101,10 @@ def coordinate_sgrna(df, my_up, my_down, my_sgrna_len):
 
 def reverse_complement(nt_seq):
     return str(Seq(nt_seq).reverse_complement())
+
+
+def resize_fig(fig_path, new_size, output_path):
+    fig = Im.open(fig_path)
+    fig = fig.resize(new_size)
+    fig.save(output_path)
+    return 0

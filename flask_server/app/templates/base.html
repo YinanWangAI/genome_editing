@@ -3,34 +3,35 @@
 {% block title %}DeepEditing{% endblock %}
 
 {% block navbar %}
-<div class="navbar navbar-default" role="navigation">
+<div class="navbar-wrapper navbar-default" role="navigation">
     <div class="container">
-    <div class="navbar-header">
-        <button type="button" class="navbar-toggle"
-                data-toggle="collapse" data-target=".navbar-collapse">
-            <span class="sr-only">Toggle navigation</span> <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span> </button>
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle"
+                    data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span> <span
+                    class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span></button>
             <a class="navbar-brand" href="/">DeepEditing</a>
-    </div>
-    <div class="navbar-collapse collapse">
-        <ul class="nav navbar-nav">
-            <li><a href="/">Home</a></li>
-            <li><a href="/design_sgrna">Design sgRNA</a></li>
-            <li><a href="/score_sgrna">Rank sgRNA</a></li>
-            <li><a href="/negative_controls">Negative Controls</a> </li>
-            <li><a href="/under_development">Analyze Screen Results</a></li>
-            <li><a href="/under_development">Pipelines</a> </li>
-        </ul>
-    </div>
+        </div>
+        <div class="navbar-collapse collapse">
+            <ul class="nav navbar-nav">
+                <li><a href="/design_sgrna">Design sgRNA</a></li>
+                <li><a href="/score_sgrna">Rank sgRNA</a></li>
+                <li><a href="/negative_controls">Negative Controls</a></li>
+                <li><a href="/under_development">Analyze Screen Results</a></li>
+                <li><a href="/under_development">Pipelines</a></li>
+                <li><a href="/under_development">About</a></li>
+            </ul>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block content %}
-    <div class="container">
-        {% block page_content %}{% endblock %}
-    </div>
+<div class="container">
+    {% block page_content %}{% endblock %}
+</div>
 {% endblock %}
 
 {% block scripts %}

@@ -76,7 +76,8 @@ def design_sgrna():
 
 @main.route('/design_sgrna/<job_id>/')
 def design_sgrna_download_link(job_id):
-    result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    # result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    result_dir = '../results'
     file_name = 'design_sgrna_output_' + str(job_id) + '.csv'
     return send_from_directory(result_dir, file_name, as_attachment=True)
 

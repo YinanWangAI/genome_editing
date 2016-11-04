@@ -163,8 +163,11 @@ class Designer:
         for sgrna in sgrna_match:
             full_seq = sgrna.group()
             if reverse_complement:
-                sgrna_seq = full_seq[(self.sgrna_downstream +
-                                      len(pam)):-self.sgrna_upstream]
+                if self.sgrna_upstream != 0:
+                    sgrna_seq = full_seq[(self.sgrna_downstream +
+                                          len(pam)):-self.sgrna_upstream]
+                else:
+                    sgrna_seq = full_seq[(self.sgrna_downstream + len(pam)):]
             else:
                 sgrna_seq = full_seq[self.sgrna_upstream:(self.sgrna_upstream +
                                                           self.sgrna_length)]
@@ -206,15 +209,6 @@ class Designer:
             str, the reverse complement of input sequence
         """
         return str(Seq(sgrna_seq).reverse_complement())
-
-    # def print(self):
-    #     """Print the sgRNAs
-    #
-    #     Returns:
-    #         None
-    #     """
-    #     for sgrna in self.sgrnas:
-    #         sgrna.print()
 
     def output(self):
         """Output sgRNAs in a pandas DataFrame

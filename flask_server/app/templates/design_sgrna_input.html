@@ -6,6 +6,12 @@
 {% block page_content %}
 <div class="page-header"><h3>Design sgRNA</h3></div>
 
+<div class="nav nav-tabs nav-justified">
+    <li role="presentation" class="active"><a href="/score_sgrna">Single-mode</a></li>
+    <li role="presentation"><a href="/">Batch-mode</a></li>
+</div>
+
+
 <div class="well">
     <p>
         Please enter gene symbols/Refseq IDs/DNA sequence.
@@ -23,6 +29,7 @@
         according to the position of sgRNAs' cutting site.
     </p>
 </div>
+
 
 <form method="post">
     {{ form.csrf_token }}

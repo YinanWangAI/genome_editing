@@ -5,7 +5,8 @@ import genome_editing.design_sgRNA.design as dsr
 from genome_editing.score_sgrna.rs2 import compute_rs2_batch
 from flask import Flask, render_template, redirect, url_for, send_from_directory
 from . import main
-from .forms import DesignSingleSgrnaForm, DesignBatchSgrnaForm, ScoreSgrnaForm
+from .forms import DesignSingleSgrnaForm, DesignBatchSgrnaForm, \
+    ScoreSgrnaForm, DesignScreen
 from .. import db
 from ..models import SgrnaDesign
 from genome_editing.utils.utilities import model_to_df, reverse_complement
@@ -128,6 +129,12 @@ def design_sgrna_batch_mode():
         return render_template('design_sgrna_batch_mode.html', form=form)
 
 
+@main.route('/design_screen/', methods=['GET', 'POST'])
+def design_screen():
+    form = DesignScreen()
+    return render_template('design_screen.html', form=form)
+
+
 # rank sgRNA
 @main.route('/score_sgrna/', methods=['GET', 'POST'])
 def score_sgrna():
@@ -136,8 +143,7 @@ def score_sgrna():
 
     if form.validate_on_submit():
         JOB_ID += 1
-        seqs = form.seqs.data.split('\n')
-        print(seqs)
+        seqs = [x.strip() for x in form.seqs.data.split('\n')]
         score_sgrna_out = compute_rs2_batch(seqs)
         output_path = './results/score_sgrna_output_' + str(JOB_ID) + '.csv'
         score_sgrna_out.to_csv(output_path, index=None)
@@ -148,7 +154,7 @@ def score_sgrna():
 
 @main.route('/score_sgrna/<job_id>/')
 def score_sgrna_download_link(job_id):
-    result_dir = '/Users/yinan/PycharmProjects/genome_editing/flask_server/results'
+    result_dir = '../results'
     file_name = 'score_sgrna_output_' + str(job_id) + '.csv'
     return send_from_directory(result_dir, file_name, as_attachment=True)
 

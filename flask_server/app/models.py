@@ -2,7 +2,7 @@ from genome_editing.flask_server.app import db
 
 
 class SgrnaDesign(db.Model):
-    __tablename__ = 'sample_hg19_whole_genome_sgrna_design'
+    __tablename__ = 'hg19_whole_genome_sgrna_design'
     index = db.Column(db.Integer, primary_key=True, unique=True)
     gene_symbol = db.Column(db.String(20))
     refseq_id = db.Column(db.String(50))

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}Design sgRNA{% endblock %}
+
+{% block page_content %}
+<div class="container">
+    <div class="page-header"><h3>Design Screen Library</h3></div>
+
+    <form method="post">
+        {{ form.csrf_token }}
+        <div class="row">
+            <div class="form-group col-sm-3">
+                {{ wtf.form_field(form.gene_sets) }}
+            </div>
+            <div class="form-group col-sm-3">
+                {{ wtf.form_field(form.ref_genome) }}
+            </div>
+            <div class="form-group col-sm-3">
+                {{ wtf.form_field(form.cover_num) }}
+            </div>
+            <div class="form-group col-sm-3">
+                {{ wtf.form_field(form.pams) }}
+            </div>
+        </div>
+        <div class="row">
+            <div class="form-group col-sm-2 col-sm-offset-5">
+                {{ form.submit(class_="btn btn-lg btn-primary") }}
+            </div>
+        </div>
+</div>
+</form>
+
+{% endblock %}

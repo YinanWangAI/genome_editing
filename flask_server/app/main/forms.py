@@ -6,8 +6,9 @@ from wtforms.validators import DataRequired
 
 class DesignSgrnaBase(Form):
     ref_genome = SelectField('Reference Genome',
-                             choices=[('hg19', 'hg19'), ('hg38', 'hg38'),
-                                      ('mm10', 'mm10')],
+                             choices=[('hg38', 'Homo sapiens (hg38)'),
+                                      ('hg19', 'Homo sapiens (hg19)'),
+                                      ('mm10', 'Mus musculus (mm10)')],
                              validators=[DataRequired()])
     input_type = SelectField('Input Type',
                              choices=[('Gene Symbol', 'Gene Symbol'),
@@ -48,9 +49,24 @@ class DesignSingleSgrnaForm(DesignSgrnaBase):
                               choices=[('Yes', 'Yes'), ('No', 'No')])
 
 
+class DesignScreen(DesignSgrnaBase):
+    gene_sets = SelectField('Pre-defined Gene Sets',
+                            choices=[('Whole genome', 'Whole genome'),
+                                     ('Drug targets', 'Drug targets'),
+                                     ('Oncogene', 'Oncogene'),
+                                     ('Tumor suppressor', 'Tumor suppressor')])
+    pams = SelectField('PAM', choices=[('NGG', 'NGG'), ('NAG', 'NAG')],
+                       validators=[DataRequired()])
+    cover_num = IntegerField('Coverage Number', validators=[DataRequired()],
+                             render_kw={'min': '1', 'step': '1',
+                                        'type': 'number', 'value': '3'})
+    submit = SubmitField('Build Library!')
+
+
 class ScoreSgrnaForm(Form):
     seqs = TextAreaField('sgRNA Sequences', validators=[DataRequired()],
                          render_kw={'rows': 5})
     score_algo = SelectField('Score Algorithm',
-                             choices=[('rs2', 'rs2')])
+                             choices=[('Deep Rank', 'Deep Rank'),
+                                      ('rs2', 'rs2')])
     submit = SubmitField('Submit')

@@ -55,9 +55,13 @@ class DesignScreen(DesignSgrnaBase):
                                      ('Drug targets', 'Drug targets'),
                                      ('Oncogene', 'Oncogene'),
                                      ('Tumor suppressor', 'Tumor suppressor')])
-    pams = SelectField('PAM', choices=[('NGG', 'NGG'), ('NAG', 'NAG')],
+    pams = SelectField('Nuclease',
+                       choices=[('NGG', 'CRISPR/SpCas9'),
+                                ('NNGRRT', 'CRISPR/SaCas9'),
+                                ('NNNNGATT', 'CRISPR/NmCas9')],
                        validators=[DataRequired()])
-    cover_num = IntegerField('Coverage Number', validators=[DataRequired()],
+    cover_num = IntegerField('Number of sgRNAs per Gene',
+                             validators=[DataRequired()],
                              render_kw={'min': '1', 'step': '1',
                                         'type': 'number', 'value': '3'})
     submit = SubmitField('Build Library!')

@@ -3,7 +3,7 @@ import numpy as np
 from genome_editing.utils import alignment
 
 
-HG19_BOWTIE_INDEX_PATH = os.getenv('BOWTIE_INDEX_PATH')
+HG38_BOWTIE_INDEX_PATH = os.getenv('HG38_BOWTIE_INDEX_PATH')
 
 
 def generate_random_sgrna(upstream=20, downstream=0):
@@ -23,9 +23,24 @@ def generate_random_sgrna(upstream=20, downstream=0):
     return random_seq
 
 
-def generate_neg_control(num, length, pam='', off_targets=2,
+def generate_neg_control(num, length, seed_len, num_mismatch=2,
                          seed=None, file_path=None,
-                         bowtie_index_path=HG19_BOWTIE_INDEX_PATH):
+                         bowtie_index_path=HG38_BOWTIE_INDEX_PATH):
+    """Generate negative controls. No totally match of the seed_len upstream of
+    PAM on the whole genome.
+
+    Args:
+        num:
+        length:
+        seed_len:
+        num_mismatch:
+        seed:
+        file_path:
+        bowtie_index_path:
+
+    Returns:
+
+    """
     # set seed
     np.random.seed(seed)
 
@@ -46,22 +61,18 @@ def generate_neg_control(num, length, pam='', off_targets=2,
             continue
 
         # alignment
-        random_seq += pam
+        input_seq= random_seq[-seed_len:]
         alignment_info = alignment.bowtie_alignment(
-            seq=random_seq, report_all=False, off_targets=off_targets,
-            bowtie_index_path=bowtie_index_path)
+            seq=input_seq, report_all=False, num_mismatch=num_mismatch,
+            bowtie_index_path=bowtie_index_path, seed=seed_len)
         if alignment_info.iloc[:, 1].values == 4:
-            if random_seq[:length] not in neg_controls:
+            if random_seq not in neg_controls:
                 if f:
-                    f.write(random_seq[:length] + '\n')
-                neg_controls.append(random_seq[:length])
+                    f.write(random_seq + '\n')
+                neg_controls.append(random_seq)
                 if len(neg_controls) % 100 == 0:
                     print('Generate {} negative controls'.format(
                         len(neg_controls)))
     if f:
         f.close()
     return neg_controls
-
-
-if __name__ == '__main__':
-    print(generate_neg_control(num=10, length=20, pam=''))

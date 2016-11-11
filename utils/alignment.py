@@ -51,7 +51,7 @@ def bowtie2_alignment(seq=None, input_file=None, mode='seq', report_all=True):
 
 def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True,
                      bowtie_index_path=BOWTIE_INDEX_PATH,
-                     off_targets=2):
+                     num_mismatch=2, seed=20):
     temp_file = tempfile.NamedTemporaryFile()
     alignment_out_path = temp_file.name
 
@@ -62,17 +62,21 @@ def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True,
 
     if mode == 'seq':
         assert seq is not None, 'Please provide sequence'
-        cmd = cmd_prefix + '-p 4 -n ' + str(off_targets) + ' -l 23 ' + \
-              bowtie_index_path + ' -c ' + seq + \
-              ' -S ' + alignment_out_path
-    elif mode == 'file':  # TODO: not supported by now
+        # cmd = cmd_prefix + '-p 4 -n ' + str(num_mismatch) + ' -l ' + str(
+        #     seed) + ' ' + \
+        #       bowtie_index_path + ' -c ' + seq + \
+        #       ' -S ' + alignment_out_path
+        cmd = '{} -p 4 -n {} -l {} {} -c {} -S {}'.format(cmd_prefix,
+                                                          num_mismatch,
+                                                          seed,
+                                                          bowtie_index_path,
+                                                          seq,
+                                                          alignment_out_path)
+    else:  # TODO: not supported by now
         assert input_file is not None, 'Please provide file'
-        cmd = cmd_prefix + '-p 4 -n ' + str(off_targets) + ' -l 23 ' + \
+        cmd = cmd_prefix + '-p 4 -n ' + str(num_mismatch) + ' -l 23 ' + \
               bowtie_index_path + ' ' + seq + \
               ' -S ' + alignment_out_path
-    else:
-        print('Error: Wrong Mode')
-        return 1
 
     run_code = subprocess.call(cmd, shell=True)
     if run_code == 0:

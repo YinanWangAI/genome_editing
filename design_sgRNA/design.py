@@ -12,7 +12,6 @@ from Bio.Seq import Seq
 from genome_editing.score_sgrna.rs2 import compute_rs2
 from ..utils import alignment
 
-
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 CHROMS = ['chr' + str(x) for x in range(1, 23)]
 CHROMS += ['chrX', 'chrY', 'chrM']
@@ -22,8 +21,10 @@ class Designer:
     """Design sgRNAs for a target"""
 
     def __init__(self, gene_symbol=None, refseq_id=None,
+                 ref_genome='hg38',
                  sgrna_upstream=4, sgrna_downstream=3,
-                 sgrna_length=20, flank=30, overlapped=True, filter_tttt=False):
+                 sgrna_length=20, flank=30, overlapped=True,
+                 filter_tttt=False):
         """
 
         Args:
@@ -36,11 +37,13 @@ class Designer:
             overlapped: whether find overlopped sgRNAs
             filter_tttt: whether filter sgRNAs containing TTTT
         """
+        assert ref_genome in ('hg19', 'hg38', 'mm10'), 'Wrong reference genome'
+
         if refseq_id is not None:
-            self.target_gene = Transcript(refseq_id)
+            self.target_gene = Transcript(refseq_id, ref_genome=ref_genome)
             self.target_gene.get_sequence(flank)
         elif gene_symbol is not None:
-            self.target_gene = Gene(gene_symbol.upper())
+            self.target_gene = Gene(gene_symbol.upper(), ref_genome=ref_genome)
             self.target_gene.get_sequence(flank)
         # else:
         #     raise BaseException('Error: please provide either gene symbol or'
@@ -57,7 +60,7 @@ class Designer:
     def __repr__(self):
         return self.target_gene.gene_symbol
 
-    def get_sgrnas(self, pams=['NGG', 'NAG']):
+    def get_sgrnas(self, pams=('NGG', 'NAG')):
         """Get sgRNAs targeting input genes or transcript
 
         Args:
@@ -182,10 +185,12 @@ class Designer:
                 sgrna_start = sgrna.start() + len(pam) + self.sgrna_downstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
                 sgrna_cutting_site = sgrna_start + 2.5
+                sgrna_strand = '-'
             else:
                 sgrna_start = sgrna.start() + self.sgrna_upstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
                 sgrna_cutting_site = sgrna_end - 2.5
+                sgrna_strand = '+'
             # if (sgrna_cutting_site < self.flank) or \
             #         (sgrna_cutting_site >= (len(seq) - self.flank)):
             #     sgrna_type = 'splicing site'
@@ -196,7 +201,8 @@ class Designer:
                                 start=sgrna_start, end=sgrna_end,
                                 pam_type=pam,
                                 full_seq=full_seq,
-                                rc=reverse_complement))
+                                rc=reverse_complement,
+                                strand=sgrna_strand))
         return sgrnas
 
     def _reverse_complement(self, sgrna_seq):
@@ -223,17 +229,18 @@ class Designer:
             else:
                 seq = sgrna.sequence
             df_row = [sgrna.gene_symbol, sgrna.refseq_id, sgrna.exon_id,
-                      sgrna.chrom,
-                      sgrna.start, sgrna.end, sgrna.sequence, sgrna.pam_type,
+                      sgrna.chrom, sgrna.strand,
+                      sgrna.start, sgrna.end, sgrna.sequence,
+                      sgrna.pam_type,
                       sgrna.cutting_site_type, sgrna.cutting_site, seq,
                       sgrna.full_seq]
             if flag:
-                df = np.asarray(df_row)
+                df = pd.DataFrame([df_row])
                 flag = False
             else:
-                df = np.vstack((df, df_row))
-        df = pd.DataFrame(df)
-        df.columns = ['gene_symbol', 'refseq_id', 'exon_id', 'chrom', 'start',
+                df = df.append([df_row])
+        df.columns = ['gene_symbol', 'refseq_id', 'exon_id', 'chrom', 'strand',
+                      'start',
                       'end',
                       'raw_sequence', 'pam_type', 'cutting_site_type',
                       'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
@@ -396,7 +403,7 @@ class Gene:
     """The gene to be edited"""
 
     def __init__(self, gene_symbol,
-                 table_name='igenome_ucsc_hg19_refgene',
+                 ref_genome='hg38',
                  uri=GENOME_EDITING_URI):
         """
 
@@ -405,7 +412,9 @@ class Gene:
             table_name: the table name in db containing gene annotation
             engine: sqla engine
         """
+        self.ref_genome = ref_genome
         self.gene_symbol = gene_symbol.upper()
+        table_name = 'igenome_ucsc_{}_refgene'.format(self.ref_genome)
         query = "SELECT * FROM {} WHERE name2='{}'".format(table_name,
                                                            self.gene_symbol)
         self.engine = sqlalchemy.create_engine(uri)
@@ -470,7 +479,7 @@ class Gene:
         """
         self.exons.loc[:, 'seq_with_flank'] = ''
         self.exons.loc[:, 'flank'] = flank
-        table_name = 'igenome_ucsc_hg19_' + self.chrom
+        table_name = 'igenome_ucsc_{}_{}'.format(self.ref_genome, self.chrom)
         chrom_seq = pd.read_sql(table_name, self.engine).iloc[0, 0]
         for i in range(self.exons.shape[0]):
             # NOTE: start is 0-based but end  is 1-based
@@ -505,7 +514,7 @@ class Gene:
                    cds_start_exon_index:(cds_end_exon_index + 1)].copy()
         cds_starts[0] = cds_start
         cds_ends[-1] = cds_end
-        table_name = 'igenome_ucsc_hg19_' + self.chrom
+        table_name = 'igenome_ucsc_{}_{}'.format(self.ref_genome, self.chrom)
         chrom_seq = pd.read_sql(table_name, self.engine).iloc[0, 0]
         seq = ''
         coord = []
@@ -548,7 +557,7 @@ class SgRNA:
                  gene_symbol=None, chrom=None, start=None, end=None,
                  exon_id=None, cutting_site=None, full_seq=None,
                  aa_cut=None, per_peptide=None, rs2_score=None,
-                 rc=None, refseq_id=None):
+                 rc=None, refseq_id=None, strand=None):
         """
 
         Args:
@@ -583,6 +592,7 @@ class SgRNA:
         self.per_peptide = per_peptide
         self.rc = rc
         self.refseq_id = refseq_id
+        self.strand = strand
         # compute rs2 score
         # self.rs2_score = rs2_score
         # if rs2_score is not None:
@@ -651,7 +661,7 @@ class SgRNA:
 
 class Transcript(Gene):
     def __init__(self, refseq_id,
-                 table_name='igenome_ucsc_hg19_refgene',
+                 ref_genome='hg38',
                  uri=GENOME_EDITING_URI):
         """Init
 
@@ -661,6 +671,8 @@ class Transcript(Gene):
             engine: sqlalchemy engine
         """
         self.refseq_id = refseq_id.upper()
+        self.ref_genome = ref_genome
+        table_name = 'igenome_ucsc_{}_refgene'.format(self.ref_genome)
         query = "SELECT * FROM {} WHERE name='{}'".format(table_name,
                                                           self.refseq_id)
         self.engine = sqlalchemy.create_engine(uri)

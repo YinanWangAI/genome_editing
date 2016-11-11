@@ -9,9 +9,13 @@
 
     <form method="post">
         {{ form.csrf_token }}
+
         <div class="row">
             <div class="form-group col-sm-3">
                 {{ wtf.form_field(form.gene_sets) }}
+                <small class="text-muted">Or input your own gene list in
+                    <strong>Customize</strong>.
+                </small>
             </div>
             <div class="form-group col-sm-3">
                 {{ wtf.form_field(form.ref_genome) }}

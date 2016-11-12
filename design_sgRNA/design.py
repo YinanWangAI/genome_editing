@@ -763,3 +763,52 @@ class SeqDesigner(Designer):
         df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
         df.loc[:, 'sgrna_id'] = np.arange(0, df.shape[0])
         return df
+
+
+def build_screen_library(inputs, sgrna_num, ref_genome, pam, mode):
+    """Build screen library for a gene list. In gene_symbol mode, for gene that
+    have multiple transcripts, we will design sgRNAs for each transcript.
+
+    Args:
+        inputs:
+        sgrna_num:
+        ref_genome:
+        pam:
+        mode: ('gene_symbol', 'refseq_id')
+
+    Returns:
+
+    """
+    engine = sqlalchemy.create_engine(GENOME_EDITING_URI)
+
+    assert mode in ('gene_symbol', 'refseq_id'), 'Wrong mode'
+    if mode == 'gene_symbol':
+        table_name = 'igenome_ucsc_{}_refgene'.format(ref_genome)
+        gene_info = pd.read_sql(table_name, engine)
+        refseq_ids = gene_info[gene_info.name2.isin(inputs)].name.values
+    else:
+        refseq_ids = inputs
+
+    flag = True
+    for refseq_id in refseq_ids:
+        sgrna_designer = Designer(refseq_id=refseq_id,
+                                  sgrna_upstream=0,
+                                  ref_genome=ref_genome,
+                                  sgrna_downstream=0, sgrna_length=20,
+                                  flank=30, filter_tttt=False)
+        sgrna_designer.get_sgrnas(pam)
+        design_output = sgrna_designer.output()
+        sub_design_output = pick_top_sgrna(design_output, sgrna_num)  # TODO: rank sgrna
+        if flag:
+            screen_library = sub_design_output
+            flag = False
+        else:
+            screen_library = screen_library.append(sub_design_output)
+    return screen_library
+
+
+def pick_top_sgrna(design_output, sgrna_num):
+    return design_output.iloc[:sgrna_num]
+
+
+    

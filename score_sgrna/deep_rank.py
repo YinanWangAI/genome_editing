@@ -58,10 +58,6 @@ def split_data_random(dataset, train_ratio=0.6, valid_ratio=0.2,
     return train_data, valid_data, test_data
 
 
-def feed_dict(x, y):
-    pass
-
-
 def permute(x, y):
     assert len(x) == len(y), "The number of features and responses is different"
     permute_index = np.random.choice(len(x), len(x), replace=False)
@@ -78,7 +74,7 @@ def inference(input_tensor, keep_prob):
         conv1_act = tf.nn.relu(conv1 + biases)
 
     with tf.name_scope('conv2'):
-        kernel = weight_variable([1, 2, 32, 64])
+        kernel = weight_variable([4, 2, 32, 64])
         conv2 = tf.nn.conv2d(conv1_act, kernel, strides=[1, 1, 1, 1],
                              padding='SAME')
         biases = bias_variable([64])
@@ -93,9 +89,9 @@ def inference(input_tensor, keep_prob):
     with tf.name_scope('dropout'):
         dropped = tf.nn.dropout(hidden1, keep_prob)
 
-    y = fc_layer(dropped, 1024, 1, layer_name='readout', act=tf.nn.softmax)
-
-    return y
+    y = fc_layer(dropped, 1024, 1, layer_name='readout', act=tf.identity)
+    y_hat = 1 / (1 + tf.exp(-y))
+    return y_hat
 
 
 def weight_variable(shape):
@@ -109,7 +105,7 @@ def bias_variable(shape):
 def fc_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
     with tf.name_scope(layer_name):
         with tf.name_scope('weights'):
-            w = weight_variable((input_dim, output_dim))
+            w = weight_variable([input_dim, output_dim])
         with tf.name_scope('biases'):
             b = bias_variable(shape=[output_dim])
         with tf.name_scope('pre_activate'):
@@ -132,14 +128,14 @@ def loss(input_x, input_y, keep_prob):
     return cost_function
 
 
-def train_step(input_x, input_y, keep_prob, lr=0.1,
+def train_step(input_x, input_y, keep_prob, lr=1e-4,
                optimizer=tf.train.AdagradOptimizer):
     cost_function = loss(input_x, input_y, keep_prob)
     step = optimizer(lr).minimize(cost_function)
     return step
 
 
-def deep_rank(train_x, train_y):
+def deep_rank(train_x, train_y, valid_x, valid_y):
     with tf.Graph().as_default():
         # train_x and train_y
         x = tf.placeholder(tf.float32, [None, 4, 30, 1])
@@ -153,7 +149,8 @@ def deep_rank(train_x, train_y):
         cost_function = loss(x, y, keep_prob)
 
         # train_op
-        train_op = train_step(x, y, keep_prob)
+        # train_op = train_step(x, y, keep_prob)
+        train_op = tf.train.AdamOptimizer(1e-4).minimize(cost_function)
 
         # saver
         saver = tf.train.Saver(tf.all_variables())
@@ -166,19 +163,21 @@ def deep_rank(train_x, train_y):
         sess.run(init)
 
         # train parameters
-        max_epoch = 50
+        max_epoch = 20
         batch_size = 100
         batch_num = int(len(train_x) / batch_size)
 
         # training
         for epoch in range(max_epoch):
-            print(epoch)
             train_x, train_y = permute(train_x, train_y)
             for i in range(batch_num):
                 batch_x = train_x[(i * batch_size): ((i + 1) * batch_size)]
                 batch_y = train_y[(i * batch_size): ((i + 1) * batch_size)]
                 feed_dict = {x: batch_x, y: batch_y, keep_prob: 0.5}
                 sess.run(train_op, feed_dict=feed_dict)
+            print(sess.run(cost_function,
+                           feed_dict={x: valid_x, y: valid_y, keep_prob: 1}))
+        sess.close()
 
 
 # Prediction and evaluation

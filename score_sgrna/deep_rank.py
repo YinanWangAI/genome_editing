@@ -6,6 +6,7 @@ the protein, structure etc.
 """
 
 import numpy as np
+import scipy.stats
 import tensorflow as tf
 
 
@@ -67,7 +68,7 @@ def permute(x, y):
 # Inference
 def inference(input_tensor, keep_prob):
     with tf.name_scope('conv1'):
-        kernel = weight_variable([4, 2, 1, 32])
+        kernel = weight_variable([4, 4, 1, 32])
         conv1 = tf.nn.conv2d(input_tensor, kernel, strides=[1, 1, 1, 1],
                              padding='SAME')
         biases = bias_variable([32])
@@ -114,8 +115,8 @@ def fc_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
     return activations
 
 
-def loss(input_x, input_y, keep_prob):
-    y_hat = inference(input_x, keep_prob)
+def loss(y_hat, input_y):
+    # y_hat = inference(input_x, keep_prob)
     cov = tf.reduce_sum(tf.matmul(tf.transpose(y_hat - tf.reduce_mean(y_hat)),
                                   input_y - tf.reduce_mean(input_y)))
     sd_y = tf.sqrt(
@@ -128,14 +129,14 @@ def loss(input_x, input_y, keep_prob):
     return cost_function
 
 
-def train_step(input_x, input_y, keep_prob, lr=1e-4,
-               optimizer=tf.train.AdagradOptimizer):
-    cost_function = loss(input_x, input_y, keep_prob)
+def train_step(cost_function, lr=1e-4,
+               optimizer=tf.train.AdamOptimizer):
     step = optimizer(lr).minimize(cost_function)
     return step
 
 
-def deep_rank(train_x, train_y, valid_x, valid_y):
+def deep_rank(train_x, train_y, valid_x, valid_y, max_epoch=20, batch_size=100,
+              model_save_path='deep_rank_model.ckpt'):
     with tf.Graph().as_default():
         # train_x and train_y
         x = tf.placeholder(tf.float32, [None, 4, 30, 1])
@@ -146,25 +147,22 @@ def deep_rank(train_x, train_y, valid_x, valid_y):
         y_hat = inference(x, keep_prob)
 
         # loss
-        cost_function = loss(x, y, keep_prob)
+        cost_function = loss(y_hat, y)
 
         # train_op
-        # train_op = train_step(x, y, keep_prob)
-        train_op = tf.train.AdamOptimizer(1e-4).minimize(cost_function)
-
-        # saver
-        saver = tf.train.Saver(tf.all_variables())
+        train_op = train_step(cost_function)
 
         # init
         init = tf.initialize_all_variables()
+
+        # saver
+        saver = tf.train.Saver(tf.all_variables())
 
         # sess
         sess = tf.Session()
         sess.run(init)
 
         # train parameters
-        max_epoch = 20
-        batch_size = 100
         batch_num = int(len(train_x) / batch_size)
 
         # training
@@ -176,14 +174,31 @@ def deep_rank(train_x, train_y, valid_x, valid_y):
                 feed_dict = {x: batch_x, y: batch_y, keep_prob: 0.5}
                 sess.run(train_op, feed_dict=feed_dict)
             print(sess.run(cost_function,
-                           feed_dict={x: valid_x, y: valid_y, keep_prob: 1}))
+                           feed_dict={x: valid_x, y: valid_y, keep_prob: 1})[0])
+
+        save_path = saver.save(sess, model_save_path)
+        print('Save model in {}'.format(save_path))
         sess.close()
 
 
 # Prediction and evaluation
-def predict():
-    pass
+def predict(model_save_path, input_x, input_y):
+    with tf.Graph().as_default():
+        x = tf.placeholder(tf.float32, [None, 4, 30, 1])
+        y = tf.placeholder(tf.float32, [None, 1])
+        keep_prob = tf.placeholder(tf.float32)
+        y_hat = inference(x, keep_prob)
+        cost_function = loss(y_hat, y)
+        saver = tf.train.Saver(tf.all_variables())
+        with tf.Session() as sess:
+            saver.restore(sess, model_save_path)
+            y_pred = sess.run(y_hat, feed_dict={x: input_x, keep_prob: 1})
+            pearsonr = sess.run(cost_function,
+                                feed_dict={x: input_x, y: input_y,
+                                           keep_prob: 1})[0]
+        return y_pred, pearsonr
 
 
-def evaluate():
-    pass
+def evaluate(y_true, y_pred):
+    return scipy.stats.pearsonr(y_true, y_pred)[0], \
+           scipy.stats.spearmanr(y_true, y_pred)[0]

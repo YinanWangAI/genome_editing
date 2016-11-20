@@ -809,6 +809,3 @@ def build_screen_library(inputs, sgrna_num, ref_genome, pam, mode):
 
 def pick_top_sgrna(design_output, sgrna_num):
     return design_output.iloc[:sgrna_num]
-
-
-    

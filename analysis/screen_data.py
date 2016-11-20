@@ -50,3 +50,14 @@ def get_reads_info(fq_1, fq_2=None, pattern='ACCG.*GTTTA', quick_merge=True):
         else:
             sgrnas_df = pd.merge(sgrnas_df, sgrnas_df_2, on='reads_id')
     return sgrnas_df
+
+
+def decode_summary(df):
+    reads_1 = df.loc[:, ['reads_id', 'seq_1']].dropna().reads_id.values
+    reads_2 = df.loc[:, ['reads_id', 'seq_2']].dropna().reads_id.values
+    intersect_reads = set(reads_1) & set(reads_2)
+    union_reads = set(reads_1) | set(reads_2)
+
+    double_map_ratio = len(intersect_reads) / len(union_reads)
+    map_ratio = len(union_reads) / df.shape[0]
+    return map_ratio, double_map_ratio

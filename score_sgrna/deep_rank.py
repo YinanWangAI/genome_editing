@@ -11,19 +11,21 @@ import tensorflow as tf
 
 
 # Input
-def generate_input(seqs, score):
+def generate_input(seqs, feats, score):
     dataset = []
     for i, seq in enumerate(seqs):
         encoding_seq = one_hot_encoding(seq)
-        dataset.append([encoding_seq, score[i]])
+        dataset.append([encoding_seq, [x[i] for x in feats], score[i]])
     return np.array(dataset)
 
 
 def one_hot_encoding(seq):
-    encoding_dict = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
+    encoding_dict = {'A': 0, 'T': 1, 'C': 2, 'G': 3, 'N': -1}
     seq = seq.upper()
     encoding_mat = np.zeros(shape=(4, len(seq)))
     for i, bp in enumerate(seq):
+        if bp == 'N':
+            continue
         encoding_mat[encoding_dict[bp]][i] = 1
     return encoding_mat
 
@@ -60,32 +62,43 @@ def split_data_random(dataset, train_ratio=0.6, valid_ratio=0.2,
 
 
 def permute(x, y):
-    assert len(x) == len(y), "The number of features and responses is different"
-    permute_index = np.random.choice(len(x), len(x), replace=False)
-    return x[permute_index], y[permute_index]
+    assert len(x[0]) == len(
+        y), "The number of features and responses is different"
+    permute_index = np.random.choice(len(y), len(y), replace=False)
+    return [x[0][permute_index], x[1][permute_index]], y[permute_index]
 
 
 # Inference
-def inference(input_tensor, keep_prob):
+def inference(cnn_input, dnn_input, keep_prob):
     with tf.name_scope('conv1'):
         kernel = weight_variable([4, 4, 1, 32])
-        conv1 = tf.nn.conv2d(input_tensor, kernel, strides=[1, 1, 1, 1],
+        conv1 = tf.nn.conv2d(cnn_input, kernel, strides=[1, 1, 1, 1],
                              padding='SAME')
         biases = bias_variable([32])
         conv1_act = tf.nn.relu(conv1 + biases)
+        tf.histogram_summary('conv1', conv1_act)
+
+    # pool1 = tf.nn.max_pool(conv1_act, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+    #                        padding='VALID')
 
     with tf.name_scope('conv2'):
-        kernel = weight_variable([4, 2, 32, 64])
+        kernel = weight_variable([2, 2, 32, 64])
         conv2 = tf.nn.conv2d(conv1_act, kernel, strides=[1, 1, 1, 1],
                              padding='SAME')
         biases = bias_variable([64])
         conv2_act = tf.nn.relu(conv2 + biases)
 
-    conv2_dim = int(conv2_act.get_shape()[1] * conv2_act.get_shape()[2] *
-                    conv2_act.get_shape()[3])
-    conv2_flat = tf.reshape(conv2_act, [-1, conv2_dim])
+    pool2 = tf.nn.max_pool(conv2_act, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                           padding='VALID')
 
-    hidden1 = fc_layer(conv2_flat, conv2_dim, 1024, layer_name='layer1')
+    conv_flat_dim = int(pool2.get_shape()[1] * pool2.get_shape()[2] *
+                        pool2.get_shape()[3])
+    conv_flat = tf.reshape(pool2, [-1, conv_flat_dim])
+
+    # add dnn features
+    hidden1_input = tf.concat(1, [conv_flat, dnn_input])
+    hidden1_dim = conv_flat_dim + int(dnn_input.get_shape()[1])
+    hidden1 = fc_layer(hidden1_input, hidden1_dim, 1024, layer_name='layer1')
 
     with tf.name_scope('dropout'):
         dropped = tf.nn.dropout(hidden1, keep_prob)
@@ -137,17 +150,28 @@ def train_step(cost_function, lr=1e-4,
 
 def deep_rank(train_x, train_y, valid_x, valid_y, max_epoch=20, batch_size=100,
               model_save_path='deep_rank_model.ckpt'):
+    cnn_input_height, cnn_input_width, cnn_input_channel = train_x[0][0].shape
+    dnn_input_len = len(train_x[1][0])
+
     with tf.Graph().as_default():
         # train_x and train_y
-        x = tf.placeholder(tf.float32, [None, 4, 30, 1])
+        cnn_input = tf.placeholder(tf.float32,
+                                   [None, cnn_input_height, cnn_input_width, 1])
+        dnn_input = tf.placeholder(tf.float32, [None, dnn_input_len])
         y = tf.placeholder(tf.float32, [None, 1])
         keep_prob = tf.placeholder(tf.float32)
 
+        tf.image_summary('cnn_input', cnn_input)
+
+        print('cnn_input: {}, dnn_input: {}'.format(cnn_input.get_shape(),
+                                                    dnn_input.get_shape()))
+
         # inference model
-        y_hat = inference(x, keep_prob)
+        y_hat = inference(cnn_input, dnn_input, keep_prob)
 
         # loss
         cost_function = loss(y_hat, y)
+        tf.histogram_summary('cost', cost_function)
 
         # train_op
         train_op = train_step(cost_function)
@@ -158,23 +182,35 @@ def deep_rank(train_x, train_y, valid_x, valid_y, max_epoch=20, batch_size=100,
         # saver
         saver = tf.train.Saver(tf.all_variables())
 
+        # summary
+        summary_op = tf.merge_all_summaries()
+
         # sess
         sess = tf.Session()
         sess.run(init)
+        summary_writer = tf.train.SummaryWriter('./log', sess.graph)
 
         # train parameters
-        batch_num = int(len(train_x) / batch_size)
+        batch_num = int(train_y.shape[0] / batch_size)
 
         # training
         for epoch in range(max_epoch):
             train_x, train_y = permute(train_x, train_y)
             for i in range(batch_num):
-                batch_x = train_x[(i * batch_size): ((i + 1) * batch_size)]
+                batch_x_cnn = train_x[0][
+                              (i * batch_size): ((i + 1) * batch_size)]
+                batch_x_dnn = train_x[1][
+                              (i * batch_size): ((i + 1) * batch_size)]
                 batch_y = train_y[(i * batch_size): ((i + 1) * batch_size)]
-                feed_dict = {x: batch_x, y: batch_y, keep_prob: 0.5}
+                feed_dict = {cnn_input: batch_x_cnn, dnn_input: batch_x_dnn,
+                             y: batch_y, keep_prob: 0.5}
                 sess.run(train_op, feed_dict=feed_dict)
-            print(sess.run(cost_function,
-                           feed_dict={x: valid_x, y: valid_y, keep_prob: 1})[0])
+            valid_feed_dict = {cnn_input: valid_x[0], dnn_input: valid_x[1],
+                               y: valid_y, keep_prob: 1}
+            valid_loss, summary_str = sess.run([cost_function, summary_op],
+                                               feed_dict=valid_feed_dict)
+            summary_writer.add_summary(summary_str, epoch)
+            print(valid_loss[0])
 
         save_path = saver.save(sess, model_save_path)
         print('Save model in {}'.format(save_path))
@@ -183,20 +219,25 @@ def deep_rank(train_x, train_y, valid_x, valid_y, max_epoch=20, batch_size=100,
 
 # Prediction and evaluation
 def predict(model_save_path, input_x, input_y):
+    cnn_input_height, cnn_input_width, cnn_input_channel = input_x[0][0].shape
+    dnn_input_len = len(input_x[1][0])
+
     with tf.Graph().as_default():
-        x = tf.placeholder(tf.float32, [None, 4, 30, 1])
+        cnn_input = tf.placeholder(tf.float32,
+                                   [None, cnn_input_height, cnn_input_width, 1])
+        dnn_input = tf.placeholder(tf.float32, [None, dnn_input_len])
         y = tf.placeholder(tf.float32, [None, 1])
         keep_prob = tf.placeholder(tf.float32)
-        y_hat = inference(x, keep_prob)
+        y_hat = inference(cnn_input, dnn_input, keep_prob)
         cost_function = loss(y_hat, y)
         saver = tf.train.Saver(tf.all_variables())
         with tf.Session() as sess:
             saver.restore(sess, model_save_path)
-            y_pred = sess.run(y_hat, feed_dict={x: input_x, keep_prob: 1})
-            pearsonr = sess.run(cost_function,
-                                feed_dict={x: input_x, y: input_y,
-                                           keep_prob: 1})[0]
-        return y_pred, pearsonr
+            feed_dict = {cnn_input: input_x[0], dnn_input: input_x[1],
+                         y: input_y, keep_prob: 1}
+            y_pred, pearsonr = sess.run([y_hat, cost_function],
+                                        feed_dict=feed_dict)
+        return y_pred, pearsonr[0]
 
 
 def evaluate(y_true, y_pred):

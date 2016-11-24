@@ -10,7 +10,10 @@ from Bio.Alphabet import IUPAC
 from Bio.Seq import Seq
 
 from genome_editing.score_sgrna.rs2 import compute_rs2
+import genome_editing.score_sgrna.deep_rank as deep_rank
+import genome_editing.score_sgrna.off_targets as off_targets
 from ..utils import alignment
+import genome_editing.utils.utilities as util
 
 GENOME_EDITING_URI = os.environ.get('GENOME_EDITING_URI')
 CHROMS = ['chr' + str(x) for x in range(1, 23)]
@@ -184,12 +187,11 @@ class Designer:
             if reverse_complement:
                 sgrna_start = sgrna.start() + len(pam) + self.sgrna_downstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
-                sgrna_cutting_site = sgrna_start + 2.5
+                full_seq = util.reverse_complement(full_seq)
                 sgrna_strand = '-'
             else:
                 sgrna_start = sgrna.start() + self.sgrna_upstream
                 sgrna_end = sgrna_start + self.sgrna_length - 1
-                sgrna_cutting_site = sgrna_end - 2.5
                 sgrna_strand = '+'
             # if (sgrna_cutting_site < self.flank) or \
             #         (sgrna_cutting_site >= (len(seq) - self.flank)):
@@ -216,6 +218,60 @@ class Designer:
         """
         return str(Seq(sgrna_seq).reverse_complement())
 
+    def get_cds_info(self):
+        """Compute peptide percentage of cutting site"""
+
+        # get gene information
+        gene_info = self.target_gene.gene_info
+        # strand = gene_info.strand.values[0]
+        # if strand == '+':
+        #     cds_start = gene_info.cdsStart.values[0]
+        #     cds_end = gene_info.cdsEnd.values[0]
+        # else:
+        #     cds_start = gene_info.cdsEnd.values[0]
+        #     cds_end = gene_info.cdsStart.values[0]
+        cds_start = gene_info.cdsStart.values[0]
+        cds_end = gene_info.cdsEnd.values[0]
+        exon_starts = np.array(
+            [int(x) for x in gene_info.exonStarts.values[0].split(',') if
+             x != ''])
+        exon_ends = np.array(
+            [int(x) for x in gene_info.exonEnds.values[0].split(',') if
+             x != ''])
+
+        # get CDS information
+        replace_start_index = np.where((exon_starts < cds_start) == True)[0][-1]
+        replace_end_index = np.where((exon_ends > cds_end) == True)[0][0]
+        cds_starts = exon_starts[replace_start_index:(replace_end_index + 1)]
+        cds_starts[0] = cds_start
+        cds_ends = exon_ends[replace_start_index:(replace_end_index + 1)]
+        cds_ends[-1] = cds_end
+
+        return cds_starts, cds_ends
+
+    def get_pcds(self):
+        """Compute CDS percentage of cutting site"""
+        cds_starts, cds_ends = self.get_cds_info()
+        cds_exon_size = cds_ends - cds_starts
+        cds_total_size = np.sum(cds_exon_size)
+
+        strand = self.target_gene.gene_info.strand.values[0]
+
+        for sgrna in self.sgrnas:
+            cutting_site = sgrna.cutting_site
+            for i, exon_coord in enumerate(zip(cds_starts, cds_ends)):
+                start = exon_coord[0]
+                end = exon_coord[1]
+                if (cutting_site >= start) and (cutting_site <= end):
+                    if strand == '+':
+                        pcds = (cds_exon_size[:i].sum() +
+                                cutting_site - start) / cds_total_size
+                    else:
+                        pcds = (cds_exon_size[(i + 1):].sum() +
+                                end - cutting_site) / cds_total_size
+                    sgrna.pcds = pcds
+                    break
+
     def output(self):
         """Output sgRNAs in a pandas DataFrame
 
@@ -223,6 +279,7 @@ class Designer:
             pd.DataFrame, the cord is 0-based, both for start and end
         """
         flag = True
+        self.get_pcds()
         for sgrna in self.sgrnas:
             if sgrna.rc:
                 seq = sgrna.reverse_complement()
@@ -233,17 +290,16 @@ class Designer:
                       sgrna.start, sgrna.end, sgrna.sequence,
                       sgrna.pam_type,
                       sgrna.cutting_site_type, sgrna.cutting_site, seq,
-                      sgrna.full_seq]
+                      sgrna.full_seq, sgrna.pcds]
             if flag:
                 df = pd.DataFrame([df_row])
                 flag = False
             else:
                 df = df.append([df_row])
         df.columns = ['gene_symbol', 'refseq_id', 'exon_id', 'chrom', 'strand',
-                      'start',
-                      'end',
-                      'raw_sequence', 'pam_type', 'cutting_site_type',
-                      'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
+                      'start', 'end', 'raw_sequence', 'pam_type',
+                      'cutting_site_type', 'cutting_site', 'sgrna_seq',
+                      'sgrna_full_seq', 'percent_cds']
         df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
         df.loc[:, 'sgrna_id'] = np.arange(0, df.shape[0])
         return df
@@ -432,6 +488,8 @@ class Gene:
         self.chrom = self.gene_info.loc[:, 'chrom'].values[0]
         self.cds_start = self.gene_info.cdsStart.values
         self.cds_end = self.gene_info.cdsEnd.values
+        self.cds_coord = None
+        self.cds_sequence = None
 
     def __repr__(self):
         return self.gene_symbol
@@ -549,6 +607,84 @@ class Gene:
     def get_cds_info(self):
         pass
 
+    def get_cds(self, upstream=100, downstream=100):
+        """Get the CDS of the gene. For alternative splicing, get all possible
+        sequences.
+
+        Args:
+            upstream: the length of sequence upstream of CDS
+            downstream: the length of sequence downstream of CDS
+
+        Returns:
+            upstream, CDS and downstream sequences
+        """
+        table_name = 'igenome_ucsc_{}_refgene'.format(self.ref_genome)
+        query = "SELECT * FROM {} WHERE name2='{}'".format(table_name,
+                                                           self.gene_symbol)
+        gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
+
+        cds_start = gene_info.cdsStart.min()
+        cds_end = gene_info.cdsEnd.max()
+
+        # get all exon coords
+        all_exons = []
+        for i in range(gene_info.shape[0]):
+            transcript_info = gene_info.iloc[i, :]
+            exon_starts = [int(x) for x in
+                           transcript_info.exonStarts.split(',')[:-1]]
+            exon_ends = [int(x) for x in
+                         transcript_info.exonEnds.split(',')[:-1]]
+            transcript_coord = list(zip(exon_starts, exon_ends))
+            all_exons = list(set(all_exons + transcript_coord))
+        all_exons.sort()
+
+        # get cds coord
+        tx_coord = []
+        for i, exon_coord in enumerate(all_exons):
+            if i == 0:
+                tx_coord.append(exon_coord)
+            else:
+                prev_exon = tx_coord[-1]
+                prev_end = prev_exon[1]
+                if exon_coord[0] <= prev_end:
+                    if exon_coord[1] <= prev_end:
+                        continue
+                    else:
+                        tx_coord[-1] = (prev_exon[0], exon_coord[1])
+                else:
+                    tx_coord.append(exon_coord)
+
+        # replace txStart and txEnd with cds_start and cds_end
+        tx_starts = np.array([x[0] for x in tx_coord])
+        tx_ends = np.array([x[1] for x in tx_coord])
+
+        cds_index = np.where(((tx_starts >= cds_start) &
+                              (tx_ends <= cds_end)) == True)[0]
+        cds_index_start = cds_index[0] - 1
+        cds_index_end = cds_index[-1] + 1
+
+        cds_starts = tx_starts[cds_index_start: (cds_index_end + 1)]
+        cds_ends = tx_ends[cds_index_start: (cds_index_end + 1)]
+        cds_starts[0] = cds_start
+        cds_ends[-1] = cds_end
+        cds_coord = list(zip(cds_starts, cds_ends))
+        self.cds_coord = cds_coord
+
+        table_name = 'igenome_ucsc_{}_{}'.format(self.ref_genome, self.chrom)
+        chrom_seq = pd.read_sql(table_name, self.engine).iloc[0, 0]
+        cds_seq = ''
+        for exon_coord in self.cds_coord:
+            # NOTE: start is 0-based but end  is 1-based
+            start = exon_coord[0]
+            end = exon_coord[1]
+            cds_seq += chrom_seq[start:end].upper()
+        self.cds_sequence = cds_seq
+
+        upstream_seq = chrom_seq[(cds_start - upstream):cds_start].upper()
+        downstream_seq = chrom_seq[cds_end:(cds_end + downstream)].upper()
+
+        return upstream_seq, cds_seq, downstream_seq
+
 
 class SgRNA:
     """SgRNA targeting a region of the genome"""
@@ -557,7 +693,7 @@ class SgRNA:
                  gene_symbol=None, chrom=None, start=None, end=None,
                  exon_id=None, cutting_site=None, full_seq=None,
                  aa_cut=None, per_peptide=None, rs2_score=None,
-                 rc=None, refseq_id=None, strand=None):
+                 rc=None, refseq_id=None, strand=None, pcds=None):
         """
 
         Args:
@@ -593,6 +729,7 @@ class SgRNA:
         self.rc = rc
         self.refseq_id = refseq_id
         self.strand = strand
+        self.pcds = pcds
         # compute rs2 score
         # self.rs2_score = rs2_score
         # if rs2_score is not None:
@@ -765,7 +902,9 @@ class SeqDesigner(Designer):
         return df
 
 
-def build_screen_library(inputs, sgrna_num, ref_genome, pam, mode):
+def build_screen_library(inputs, sgrna_num=3, ref_genome='hg38',
+                         mode='gene_symbol', off_target_tol='standard',
+                         pam='NGG'):
     """Build screen library for a gene list. In gene_symbol mode, for gene that
     have multiple transcripts, we will design sgRNAs for each transcript.
 
@@ -781,7 +920,13 @@ def build_screen_library(inputs, sgrna_num, ref_genome, pam, mode):
     """
     engine = sqlalchemy.create_engine(GENOME_EDITING_URI)
 
+    # check input
     assert mode in ('gene_symbol', 'refseq_id'), 'Wrong mode'
+    assert off_target_tol in ('high', 'standard', 'low', False), \
+        'Wrong rm_off_target'
+    assert pam == 'NGG', 'Wrong PAM'
+
+    # get the refseq IDs of the input
     if mode == 'gene_symbol':
         table_name = 'igenome_ucsc_{}_refgene'.format(ref_genome)
         gene_info = pd.read_sql(table_name, engine)
@@ -789,16 +934,50 @@ def build_screen_library(inputs, sgrna_num, ref_genome, pam, mode):
     else:
         refseq_ids = inputs
 
+    # get the tolerance of off-targets
+    if off_targets == 'high':
+        seed_len = 20
+    elif off_targets == 'standard':
+        seed_len = 16
+    elif off_targets == 'low':
+        seed_len = 12
+    else:
+        seed_len = False
+
     flag = True
     for refseq_id in refseq_ids:
+        # design all possible sgRNAs
+        # TODO: peptide percent and GC content
         sgrna_designer = Designer(refseq_id=refseq_id,
-                                  sgrna_upstream=0,
+                                  sgrna_upstream=4,
                                   ref_genome=ref_genome,
-                                  sgrna_downstream=0, sgrna_length=20,
+                                  sgrna_downstream=3, sgrna_length=20,
                                   flank=30, filter_tttt=False)
         sgrna_designer.get_sgrnas(pam)
         design_output = sgrna_designer.output()
-        sub_design_output = pick_top_sgrna(design_output, sgrna_num)  # TODO: rank sgrna
+
+        # remove sgRNAs don't target coding region
+        design_output = design_output[
+            design_output.cutting_site_type.isin(['coding_region'])]
+
+        # remove sgRNAs with off-targets
+        if seed_len:
+            sgrna_seqs = design_output.sgrna_seq.values
+            have_off_target = []
+            for seq in sgrna_seqs:
+                have_off_target.append(
+                    off_targets.have_off_targets(seq, pam,
+                                                 upstream_len=seed_len,
+                                                 num_mismatch=0))
+            design_output = design_output.loc[~have_off_target, :]
+
+        # score
+        score_seqs = design_output.sgrna_full_seq.values
+        deep_rank_score = []
+        # TODO: function: input: seq and feats, output: score
+
+        # Pick sgRNA
+        sub_design_output = pick_top_sgrna(design_output, sgrna_num)
         if flag:
             screen_library = sub_design_output
             flag = False

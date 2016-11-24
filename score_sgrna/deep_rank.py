@@ -148,7 +148,8 @@ def train_step(cost_function, lr=1e-4,
     return step
 
 
-def deep_rank(train_x, train_y, valid_x, valid_y, max_epoch=20, batch_size=100,
+def deep_rank(train_x, train_y, valid_x=None, valid_y=None,
+              max_epoch=20, batch_size=100,
               model_save_path='deep_rank_model.ckpt'):
     cnn_input_height, cnn_input_width, cnn_input_channel = train_x[0][0].shape
     dnn_input_len = len(train_x[1][0])
@@ -205,8 +206,12 @@ def deep_rank(train_x, train_y, valid_x, valid_y, max_epoch=20, batch_size=100,
                 feed_dict = {cnn_input: batch_x_cnn, dnn_input: batch_x_dnn,
                              y: batch_y, keep_prob: 0.5}
                 sess.run(train_op, feed_dict=feed_dict)
-            valid_feed_dict = {cnn_input: valid_x[0], dnn_input: valid_x[1],
-                               y: valid_y, keep_prob: 1}
+            if (valid_x is not None) and (valid_y is not None):
+                valid_feed_dict = {cnn_input: valid_x[0], dnn_input: valid_x[1],
+                                   y: valid_y, keep_prob: 1}
+            else:
+                valid_feed_dict = {cnn_input: train_x[0], dnn_input: train_x[1],
+                                   y: train_y, keep_prob: 1}
             valid_loss, summary_str = sess.run([cost_function, summary_op],
                                                feed_dict=valid_feed_dict)
             summary_writer.add_summary(summary_str, epoch)

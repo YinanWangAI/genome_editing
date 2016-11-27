@@ -68,6 +68,29 @@ def permute(x, y):
     return [x[0][permute_index], x[1][permute_index]], y[permute_index]
 
 
+def get_gc_content(seq):
+    return (seq.count('C') + seq.count('G')) / len(seq)
+
+
+def transform(input_data):
+    cnn = np.array([x[0] for x in input_data])
+    dnn = np.array([x[1] for x in input_data])
+    response = np.array([x[2] for x in input_data])
+
+    cnn_transform = np.reshape(cnn, (-1, 4, 30, 1))
+    response_transform = np.reshape(response, (-1, 1))
+    return [cnn_transform, dnn], response_transform
+
+
+def generate_ms_input(ms_data):
+    seqs = ms_data.loc[:, '30mer'].values
+    pp = ms_data.loc[:, 'Percent Peptide'].values / 100
+    gc = [get_gc_content(x[4:-6]) for x in seqs]
+    feats = [pp, gc]
+    rank_score = ms_data.loc[:, 'score_drug_gene_rank'].values
+    return generate_input(seqs, feats, rank_score)
+
+
 # Inference
 def inference(cnn_input, dnn_input, keep_prob):
     with tf.name_scope('conv1'):

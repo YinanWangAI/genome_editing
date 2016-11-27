@@ -9,3 +9,4 @@ flask_server/app/main/__pycache__/*
 *.pyc
 flask_server/results/*
 score_sgrna/tf_log/*
+scripts/*

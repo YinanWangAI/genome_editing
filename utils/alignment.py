@@ -82,16 +82,6 @@ def bowtie_alignment(seq=None, input_file=None, mode='seq', report_all=True,
     if run_code == 0:
         alignment_out = pd.read_table(alignment_out_path,
                                       comment='@', header=None)
-        # colnames = ['read_name', 'sum_flags', 'chrom', 'start_1_base',
-        #             'mapping_quality', 'cigar', 'ref_mates',
-        #             'start_1_base_mates',
-        #             'fragment_len', 'read_sequence', 'read_qualities',
-        #             'alignment_score',
-        #             'sub_optim_alignment_score', 'num_ambiguous_base',
-        #             'num_mismatch',
-        #             'num_gaps', 'num_gap_ext', 'edit_distance', 'mismatch_ref',
-        #             'filter_reason']
-        # # alignment_out.columns = colnames
         return alignment_out
     else:
         print('Error in Bowtie')

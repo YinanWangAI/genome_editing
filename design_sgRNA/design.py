@@ -12,6 +12,7 @@ from Bio.Seq import Seq
 from genome_editing.score_sgrna.rs2 import compute_rs2
 import genome_editing.score_sgrna.deep_rank as deep_rank
 import genome_editing.score_sgrna.off_targets as off_targets
+from genome_editing.score_sgrna.off_targets import sgrna_off_targets
 from ..utils import alignment
 import genome_editing.utils.utilities as util
 
@@ -604,9 +605,20 @@ class Gene:
 
         return aa_info
 
-    def get_cds_info(self):
-        pass
+    def get_cds_exon(self, tx_starts, tx_ends, cds_start, cds_end):
+        cds_index = np.where(((tx_starts >= cds_start) &
+                              (tx_ends <= cds_end)) == True)[0]
+        cds_index_start = cds_index[0] - 1
+        cds_index_end = cds_index[-1] + 1
 
+        cds_starts = tx_starts[cds_index_start: (cds_index_end + 1)]
+        cds_ends = tx_ends[cds_index_start: (cds_index_end + 1)]
+        cds_starts[0] = cds_start
+        cds_ends[-1] = cds_end
+        cds_coord = list(zip(cds_starts, cds_ends))
+        return cds_coord
+
+    # TODO: BUG FIX
     def get_cds(self, upstream=100, downstream=100):
         """Get the CDS of the gene. For alternative splicing, get all possible
         sequences.
@@ -623,8 +635,8 @@ class Gene:
                                                            self.gene_symbol)
         gene_info = pd.read_sql_query(query, self.engine).drop_duplicates()
 
-        cds_start = gene_info.cdsStart.min()
-        cds_end = gene_info.cdsEnd.max()
+        # cds_start = gene_info.cdsStart.min()
+        # cds_end = gene_info.cdsEnd.max()
 
         # get all exon coords
         all_exons = []
@@ -634,40 +646,43 @@ class Gene:
                            transcript_info.exonStarts.split(',')[:-1]]
             exon_ends = [int(x) for x in
                          transcript_info.exonEnds.split(',')[:-1]]
-            transcript_coord = list(zip(exon_starts, exon_ends))
+            cds_start = transcript_info.cdsStart
+            cds_end = transcript_info.cdsEnd
+            transcript_coord = self.get_cds_exon(exon_starts, exon_ends,
+                                                 cds_start, cds_end)
             all_exons = list(set(all_exons + transcript_coord))
         all_exons.sort()
 
         # get cds coord
-        tx_coord = []
+        cds_coord = []
         for i, exon_coord in enumerate(all_exons):
             if i == 0:
-                tx_coord.append(exon_coord)
+                cds_coord.append(exon_coord)
             else:
-                prev_exon = tx_coord[-1]
+                prev_exon = cds_coord[-1]
                 prev_end = prev_exon[1]
                 if exon_coord[0] <= prev_end:
                     if exon_coord[1] <= prev_end:
                         continue
                     else:
-                        tx_coord[-1] = (prev_exon[0], exon_coord[1])
+                        cds_coord[-1] = (prev_exon[0], exon_coord[1])
                 else:
-                    tx_coord.append(exon_coord)
+                    cds_coord.append(exon_coord)
 
-        # replace txStart and txEnd with cds_start and cds_end
-        tx_starts = np.array([x[0] for x in tx_coord])
-        tx_ends = np.array([x[1] for x in tx_coord])
-
-        cds_index = np.where(((tx_starts >= cds_start) &
-                              (tx_ends <= cds_end)) == True)[0]
-        cds_index_start = cds_index[0] - 1
-        cds_index_end = cds_index[-1] + 1
-
-        cds_starts = tx_starts[cds_index_start: (cds_index_end + 1)]
-        cds_ends = tx_ends[cds_index_start: (cds_index_end + 1)]
-        cds_starts[0] = cds_start
-        cds_ends[-1] = cds_end
-        cds_coord = list(zip(cds_starts, cds_ends))
+        # # replace txStart and txEnd with cds_start and cds_end
+        # tx_starts = np.array([x[0] for x in tx_coord])
+        # tx_ends = np.array([x[1] for x in tx_coord])
+        #
+        # cds_index = np.where(((tx_starts >= cds_start) &
+        #                       (tx_ends <= cds_end)) == True)[0]
+        # cds_index_start = cds_index[0] - 1
+        # cds_index_end = cds_index[-1] + 1
+        #
+        # cds_starts = tx_starts[cds_index_start: (cds_index_end + 1)]
+        # cds_ends = tx_ends[cds_index_start: (cds_index_end + 1)]
+        # cds_starts[0] = cds_start
+        # cds_ends[-1] = cds_end
+        # cds_coord = list(zip(cds_starts, cds_ends))
         self.cds_coord = cds_coord
 
         table_name = 'igenome_ucsc_{}_{}'.format(self.ref_genome, self.chrom)
@@ -680,8 +695,13 @@ class Gene:
             cds_seq += chrom_seq[start:end].upper()
         self.cds_sequence = cds_seq
 
-        upstream_seq = chrom_seq[(cds_start - upstream):cds_start].upper()
-        downstream_seq = chrom_seq[cds_end:(cds_end + downstream)].upper()
+        cds_start_overall = gene_info.cdsStart.min()
+        cds_end_overall = gene_info.cdsEnd.max()
+
+        upstream_seq = chrom_seq[(cds_start_overall -
+                                  upstream):cds_start_overall].upper()
+        downstream_seq = chrom_seq[cds_end_overall:(cds_end_overall
+                                                    + downstream)].upper()
 
         return upstream_seq, cds_seq, downstream_seq
 
@@ -988,3 +1008,22 @@ def build_screen_library(inputs, sgrna_num=3, ref_genome='hg38',
 
 def pick_top_sgrna(design_output, sgrna_num):
     return design_output.iloc[:sgrna_num]
+
+
+def design_sgrna_with_offtargets(refseq_id, ref_genome='hg19', pam='NGG',
+                                 bowtie_index=os.getenv(
+                                     'HG19_BOWTIE_INDEX_PATH')):
+    design = Designer(refseq_id=refseq_id, ref_genome=ref_genome)
+    design.get_sgrnas(pams=[pam])
+    design_out = design.output()
+    sgrna_seqs = design_out.sgrna_seq.values
+    offtarget_12mer = off_targets.sgrna_off_targets_batch(
+        sgrna_seqs, pam, seed=12, bowtie_index=bowtie_index)
+    offtarget_16mer = off_targets.sgrna_off_targets_batch(
+        sgrna_seqs, pam, seed=16, bowtie_index=bowtie_index)
+    offtarget_20mer = off_targets.sgrna_off_targets_batch(
+        sgrna_seqs, pam, seed=20, bowtie_index=bowtie_index)
+    design_out.loc[:, 'offtarget_12mer'] = offtarget_12mer
+    design_out.loc[:, 'offtarget_16mer'] = offtarget_16mer
+    design_out.loc[:, 'offtarget_20mer'] = offtarget_20mer
+    return design_out

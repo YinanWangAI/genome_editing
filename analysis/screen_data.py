@@ -3,18 +3,19 @@ import pandas as pd
 import regex
 
 
-def get_reads_info(fq_1, fq_2=None, pattern='ACCG.*GTTTA', quick_merge=True):
+def get_reads_info(fq_1, fq_2=None, pattern='ACCG.{20}GTTTA', quick_merge=True):
+    pattern = regex.compile(pattern)
     with open(fq_1) as f:
         sgrnas_1 = []
         for i, line in enumerate(f):
             if i % 4 == 0:
                 record = line.split(' ')[0]
             if i % 4 == 1:
-                seq = regex.findall(pattern, line)
-                if len(seq) == 0:
+                seq = pattern.search(line)
+                if seq is None:
                     sgrnas_1.append([record, np.nan])
                 else:
-                    sgrnas_1.append([record, seq[0]])
+                    sgrnas_1.append([record, seq.captures()[0]])
             if i % 10000000 == 0:
                 print(i)
         sgrnas_df = pd.DataFrame(sgrnas_1)
@@ -27,11 +28,11 @@ def get_reads_info(fq_1, fq_2=None, pattern='ACCG.*GTTTA', quick_merge=True):
                 if i % 4 == 0:
                     record = line.split(' ')[0]
                 if i % 4 == 1:
-                    seq = regex.findall(pattern, line)
-                    if len(seq) == 0:
+                    seq = pattern.search(line)
+                    if seq is None:
                         sgrnas_2.append([record, np.nan])
                     else:
-                        sgrnas_2.append([record, seq[0]])
+                        sgrnas_2.append([record, seq.captures()[0]])
                 if i % 10000000 == 0:
                     print(i)
             sgrnas_df_2 = pd.DataFrame(sgrnas_2)
@@ -61,3 +62,29 @@ def decode_summary(df):
     double_map_ratio = len(intersect_reads) / len(union_reads)
     map_ratio = len(union_reads) / df.shape[0]
     return map_ratio, double_map_ratio
+
+
+def count_sgrna(df, start=0, end=-1):
+    """统计reads数
+
+    Args:
+        df: Output of get_reads_info
+        start: start index of seq
+        end: end index of seq
+    Returns:
+
+    """
+    df = df[pd.isnull(df.seq_1) | pd.isnull(df.seq_2.values)]
+    df_seqs = list(df.seq_1.dropna().values) + list(df.seq_2.dropna().values)
+    count_dict = {}
+    for seq in df_seqs:
+        if seq not in count_dict:
+            count_dict[seq] = 1
+        else:
+            count_dict[seq] += 1
+    reads_count = pd.DataFrame.from_dict(count_dict, orient='index')
+    reads_count.loc[:, 'sgrna_seq'] = [x[start:end] for x in
+                                       list(reads_count.index)]
+    reads_count.index = range(reads_count.shape[0])
+    reads_count.columns = ['counts', 'sgrna_seq']
+    return reads_count

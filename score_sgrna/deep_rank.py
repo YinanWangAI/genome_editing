@@ -177,6 +177,12 @@ def deep_rank(train_x, train_y, valid_x=None, valid_y=None,
     cnn_input_height, cnn_input_width, cnn_input_channel = train_x[0][0].shape
     dnn_input_len = len(train_x[1][0])
 
+    # early stopping parameters
+    num_waiting = 3
+    improve_accuracy = 0.005
+    count = 0
+    valid_loss_best = 0
+
     with tf.Graph().as_default():
         # train_x and train_y
         cnn_input = tf.placeholder(tf.float32,
@@ -240,8 +246,22 @@ def deep_rank(train_x, train_y, valid_x=None, valid_y=None,
             summary_writer.add_summary(summary_str, epoch)
             print(valid_loss[0])
 
-        save_path = saver.save(sess, model_save_path)
-        print('Save model in {}'.format(save_path))
+            if (np.abs(valid_loss) - np.abs(
+                    valid_loss_best)) < improve_accuracy:
+                count += 1
+            else:
+                count = 0
+
+            if valid_loss < valid_loss_best:
+                valid_loss_best = valid_loss
+                save_path = saver.save(sess, model_save_path)
+                print('Save model in {}'.format(save_path))
+
+            if count >= num_waiting:
+                break
+
+        # save_path = saver.save(sess, model_save_path)
+        # print('Save model in {}'.format(save_path))
         sess.close()
 
 

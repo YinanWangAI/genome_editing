@@ -241,8 +241,8 @@ class Designer:
              x != ''])
 
         # get CDS information
-        replace_start_index = np.where((exon_starts < cds_start) == True)[0][-1]
-        replace_end_index = np.where((exon_ends > cds_end) == True)[0][0]
+        replace_start_index = np.where((exon_starts <= cds_start) == True)[0][-1]
+        replace_end_index = np.where((exon_ends >= cds_end) == True)[0][0]
         cds_starts = exon_starts[replace_start_index:(replace_end_index + 1)]
         cds_starts[0] = cds_start
         cds_ends = exon_ends[replace_start_index:(replace_end_index + 1)]
@@ -471,7 +471,10 @@ class Gene:
         """
         self.ref_genome = ref_genome
         self.gene_symbol = gene_symbol.upper()
-        table_name = 'igenome_ucsc_{}_refgene'.format(self.ref_genome)
+        if ref_genome == 'mm10':
+            table_name = 'ucsc_mm10_refgene'
+        else:
+            table_name = 'igenome_ucsc_{}_refgene'.format(self.ref_genome)
         query = "SELECT * FROM {} WHERE name2='{}'".format(table_name,
                                                            self.gene_symbol)
         self.engine = sqlalchemy.create_engine(uri)

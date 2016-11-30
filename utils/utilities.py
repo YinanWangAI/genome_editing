@@ -108,3 +108,7 @@ def resize_fig(fig_path, new_size, output_path):
     fig = fig.resize(new_size)
     fig.save(output_path)
     return 0
+
+
+def get_gc_content(seq):
+    return (seq.count('C') + seq.count('G')) / len(seq)

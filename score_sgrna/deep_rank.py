@@ -72,20 +72,20 @@ def get_gc_content(seq):
     return (seq.count('C') + seq.count('G')) / len(seq)
 
 
-def transform(input_data):
+def transform(input_data, seq_len):
     cnn = np.array([x[0] for x in input_data])
     dnn = np.array([x[1] for x in input_data])
     response = np.array([x[2] for x in input_data])
 
-    cnn_transform = np.reshape(cnn, (-1, 4, 30, 1))
+    cnn_transform = np.reshape(cnn, (-1, 4, seq_len, 1))
     response_transform = np.reshape(response, (-1, 1))
     return [cnn_transform, dnn], response_transform
 
 
 def generate_ms_input(ms_data):
-    seqs = ms_data.loc[:, '30mer'].values
+    seqs = ms_data.loc[:, 'sgrna_34mer'].values
     pp = ms_data.loc[:, 'Percent Peptide'].values / 100
-    gc = [get_gc_content(x[4:-6]) for x in seqs]
+    gc = [get_gc_content(x[4:-10]) for x in seqs]
     feats = [pp, gc]
     rank_score = ms_data.loc[:, 'score_drug_gene_rank'].values
     return generate_input(seqs, feats, rank_score)
@@ -111,12 +111,12 @@ def inference(cnn_input, dnn_input, keep_prob):
         biases = bias_variable([64])
         conv2_act = tf.nn.relu(conv2 + biases)
 
-    pool2 = tf.nn.max_pool(conv2_act, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
-                           padding='VALID')
+    # pool2 = tf.nn.max_pool(conv2_act, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+    #                        padding='VALID')
 
-    conv_flat_dim = int(pool2.get_shape()[1] * pool2.get_shape()[2] *
-                        pool2.get_shape()[3])
-    conv_flat = tf.reshape(pool2, [-1, conv_flat_dim])
+    conv_flat_dim = int(conv2_act.get_shape()[1] * conv2_act.get_shape()[2] *
+                        conv2_act.get_shape()[3])
+    conv_flat = tf.reshape(conv2_act, [-1, conv_flat_dim])
 
     # add dnn features
     hidden1_input = tf.concat(1, [conv_flat, dnn_input])
@@ -178,8 +178,8 @@ def deep_rank(train_x, train_y, valid_x=None, valid_y=None,
     dnn_input_len = len(train_x[1][0])
 
     # early stopping parameters
-    num_waiting = 3
-    improve_accuracy = 0.005
+    num_waiting = 5
+    improve_accuracy = 0.001
     count = 0
     valid_loss_best = 0
 

@@ -12,18 +12,20 @@ PYTHON2 = os.getenv('ANACONDA_PYTHON2')
 RS2 = os.getenv('RS2_CALCULATOR')
 
 
-def compute_rs2(seq, aa_cut=None, per_peptide=None):
+def compute_rs2(seq, aa_cut=None, per_peptide=None,
+                python_path=PYTHON2, rs2_calculator_path=RS2):
     if aa_cut is None:
         aa_cut = -1
     if per_peptide is None:
         per_peptide = -1
-    cmd = PYTHON2 + ' ' + RS2 + ' --seq {} --aa-cut {} --per-peptide {}'.format(
-        seq, aa_cut, per_peptide)
+    cmd = python_path + ' ' + rs2_calculator_path + \
+          ' --seq {} --aa-cut {} --per-peptide {}'.format(
+              seq, aa_cut, per_peptide)
     rs2_score = subprocess.check_output(cmd, shell=True).decode('utf-8')
     return float(rs2_score.strip().split(' ')[-1])
 
 
-def compute_rs2_batch(seqs):
+def compute_rs2_batch(seqs, python_path=PYTHON2, rs2_calculator_path=RS2):
     if type(seqs) is not list:
         seqs = [seqs]
     flag = True
@@ -32,7 +34,8 @@ def compute_rs2_batch(seqs):
         if (seq == '') or (len(seq) < 30):
             continue
         seq = seq[:30]
-        seq_score = compute_rs2(seq)
+        seq_score = compute_rs2(seq, python_path=python_path,
+                                rs2_calculator_path=rs2_calculator_path)
         if flag:
             seq_num += 1
             out = np.asarray([seq, seq_score])

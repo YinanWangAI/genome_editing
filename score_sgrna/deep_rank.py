@@ -178,7 +178,7 @@ def deep_rank(train_x, train_y, valid_x=None, valid_y=None,
     dnn_input_len = len(train_x[1][0])
 
     # early stopping parameters
-    num_waiting = 5
+    num_waiting = 10
     improve_accuracy = 0.001
     count = 0
     valid_loss_best = 0

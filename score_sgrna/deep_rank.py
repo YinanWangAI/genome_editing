@@ -91,6 +91,15 @@ def generate_ms_input(ms_data):
     return generate_input(seqs, feats, rank_score)
 
 
+def generate_input_from_clean_df(clean_df):
+    seqs = clean_df.loc[:, 'deep_rank'].values
+    pp = clean_df.loc[:, 'peptide_ratio'].values
+    gc = clean_df.loc[:, 'gc'].values
+    feats = [pp, gc]
+    rank_score = clean_df.loc[:, 'rank_score'].values
+    return generate_input(seqs, feats, rank_score)
+
+
 # Inference
 def inference(cnn_input, dnn_input, keep_prob):
     with tf.name_scope('conv1'):
@@ -266,7 +275,10 @@ def deep_rank(train_x, train_y, valid_x=None, valid_y=None,
 
 
 # Prediction and evaluation
-def predict(model_save_path, input_x, input_y):
+def predict(model_save_path, input_x, input_y=None):
+    if input_y is None:
+        input_y = np.zeros(shape=(input_x[0].shape[0], 1))
+
     cnn_input_height, cnn_input_width, cnn_input_channel = input_x[0][0].shape
     dnn_input_len = len(input_x[1][0])
 

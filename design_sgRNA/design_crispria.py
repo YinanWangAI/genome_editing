@@ -1,6 +1,4 @@
-"""Design sgRNAs for CRISPR/Cas9 Knock-out gene editing
-Reference Genome: igenome UCSC hg19, start is 0-based
-"""
+"""Design sgRNAs for CRISPRi/a gene editing"""
 import os
 import numpy as np
 import pandas as pd
@@ -27,7 +25,7 @@ class Designer:
     def __init__(self, gene_symbol=None, refseq_id=None,
                  ref_genome='hg38',
                  sgrna_upstream=4, sgrna_downstream=7,
-                 sgrna_length=20, flank=30, overlapped=True,
+                 sgrna_length=20, flank=0, overlapped=True,
                  filter_tttt=False):
         """
 
@@ -45,13 +43,8 @@ class Designer:
 
         if refseq_id is not None:
             self.target_gene = Transcript(refseq_id, ref_genome=ref_genome)
-            self.target_gene.get_sequence(flank)
         elif gene_symbol is not None:
             self.target_gene = Gene(gene_symbol.upper(), ref_genome=ref_genome)
-            self.target_gene.get_sequence(flank)
-        # else:
-        #     raise BaseException('Error: please provide either gene symbol or'
-        #                         'refseq ID')
 
         self.sgrna_upstream = sgrna_upstream
         self.sgrna_downstream = sgrna_downstream
@@ -60,11 +53,12 @@ class Designer:
         self.sgrnas = []
         self.overlapped = overlapped
         self.filter_tttt = filter_tttt
+        self.ref_genome = ref_genome
 
     def __repr__(self):
         return self.target_gene.gene_symbol
 
-    def get_sgrnas(self, pams=('NGG', 'NAG')):
+    def get_sgrnas(self, pams=('NGG', 'NAG'), upstream=500, downstream=100):
         """Get sgRNAs targeting input genes or transcript
 
         Args:
@@ -73,49 +67,33 @@ class Designer:
         Returns:
             None, update self.sgrnas, which contain a list of SgRNA objects
         """
-        exon_num = self.target_gene.exons.shape[0]
-        cds_start = self.target_gene.cds_start[0]
-        cds_end = self.target_gene.cds_end[0]
+        self.target_gene.get_sequence_near_tss(upstream=upstream,
+                                               downstream=downstream)
+        seq = self.target_gene.seq_near_tss
+        ia_start = self.target_gene.ia_start
+        sgrnas = []
 
-        for i in range(exon_num):
-            exon_seq = self.target_gene.exons.seq_with_flank[i]
-            exon_start = self.target_gene.exons.start[i]
-            exon_end = self.target_gene.exons.end[i]
-            sgrnas = []
-            for pam in pams:
-                pam_pattern = self._get_sgrna_pattern(pam)
-                pam_pattern_rc = self._get_sgrna_pattern(
-                    pam, reverse_complement=True)
-                sgrnas += self._design_sgrna(exon_seq, pam_pattern, pam)
-                sgrnas += self._design_sgrna(exon_seq, pam_pattern_rc,
-                                             self._reverse_complement(pam),
-                                             reverse_complement=True)
-            for sgrna in sgrnas:
-                sgrna.chrom = self.target_gene.chrom
-                sgrna.gene_symbol = self.target_gene.gene_symbol
-                sgrna.refseq_id = self.target_gene.refseq_id
-                sgrna.exon_id = self.target_gene.exons.exon_id.values[i]
-                sgrna.start += exon_start - self.flank
-                sgrna.end += exon_start - self.flank
+        for pam in pams:
+            pam_pattern = self._get_sgrna_pattern(pam)
+            pam_pattern_rc = self._get_sgrna_pattern(
+                pam, reverse_complement=True)
+            sgrnas += self._design_sgrna(seq, pam_pattern, pam)
+            sgrnas += self._design_sgrna(seq, pam_pattern_rc,
+                                         self._reverse_complement(pam),
+                                         reverse_complement=True)
 
-                if sgrna.rc:
-                    sgrna.cutting_site = sgrna.start + 2.5
-                else:
-                    sgrna.cutting_site = sgrna.end - 2.5
+        for sgrna in sgrnas:
+            sgrna.chrom = self.target_gene.chrom
+            sgrna.gene_symbol = self.target_gene.gene_symbol
+            sgrna.refseq_id = self.target_gene.refseq_id
+            sgrna.exon_id = None
+            sgrna.start += ia_start
+            sgrna.end += ia_start
 
-                # print(sgrna.cutting_site)
-                # print(cds_start)
-                # print(cds_end)
+            sgrna.cutting_site = None
+            sgrna.cutting_site_type = None
 
-                if (sgrna.cutting_site < cds_start) or \
-                        (sgrna.cutting_site > cds_end):
-                    sgrna.cutting_site_type = 'UTR'
-                elif (sgrna.cutting_site >= exon_start) and \
-                        (sgrna.cutting_site <= exon_end):
-                    sgrna.cutting_site_type = 'coding_region'
-                else:
-                    sgrna.cutting_site_type = 'intron_region_near_splicing_sites'
-                self.sgrnas.append(sgrna)
+            self.sgrnas.append(sgrna)
 
     def _get_sgrna_pattern(self, pam, reverse_complement=False):
         """Generate re pattern of input PAM sequence
@@ -280,7 +258,7 @@ class Designer:
             pd.DataFrame, the cord is 0-based, both for start and end
         """
         flag = True
-        self.get_pcds()
+        # self.get_pcds()
         for sgrna in self.sgrnas:
             if sgrna.rc:
                 seq = sgrna.reverse_complement()
@@ -495,6 +473,14 @@ class Gene:
         self.cds_end = self.gene_info.cdsEnd.values
         self.cds_coord = None
         self.cds_sequence = None
+        self.seq_near_tss = None
+        self.ia_start = None
+
+        self.strand = self.gene_info.strand.values[0]
+        if self.strand == '+':
+            self.tx_start = self.gene_info.txStart[0]
+        else:
+            self.tx_start = self.gene_info.txEnd[0]
 
     def __repr__(self):
         return self.gene_symbol
@@ -709,6 +695,18 @@ class Gene:
 
         return upstream_seq, cds_seq, downstream_seq
 
+    def get_sequence_near_tss(self, upstream, downstream):
+        if self.strand == '+':
+            start = self.tx_start - upstream
+            end = self.tx_start + downstream
+        else:
+            start = self.tx_start - downstream
+            end = self.tx_start + upstream
+        table_name = 'igenome_ucsc_{}_{}'.format(self.ref_genome, self.chrom)
+        chrom_seq = pd.read_sql(table_name, self.engine).iloc[0, 0]
+        self.seq_near_tss = chrom_seq[start:end].upper()
+        self.ia_start = start
+
 
 class SgRNA:
     """SgRNA targeting a region of the genome"""
@@ -850,184 +848,11 @@ class Transcript(Gene):
         self.cds_start = self.gene_info.cdsStart.values
         self.cds_end = self.gene_info.cdsEnd.values
 
+        self.strand = self.gene_info.strand.values[0]
+        if self.strand == '+':
+            self.tx_start = self.gene_info.txStart[0]
+        else:
+            self.tx_start = self.gene_info.txEnd[0]
+
     def __repr__(self):
         return self.refseq_id
-
-
-class SeqDesigner(Designer):
-    def __init__(self, seq, sgrna_upstream=4, sgrna_downstream=3,
-                 sgrna_length=20, flank=30, overlapped=True, filter_tttt=False):
-        """
-
-        Args:
-            seq: sequence to be designed
-        """
-
-        super(SeqDesigner, self).__init__(sgrna_upstream=sgrna_upstream,
-                                          sgrna_downstream=sgrna_downstream,
-                                          sgrna_length=sgrna_length,
-                                          flank=flank,
-                                          overlapped=overlapped,
-                                          filter_tttt=filter_tttt)
-        self.seq = seq.upper()
-
-    def __repr__(self):
-        return 'SeqDesigner'
-
-    def get_sgrnas(self, pams=['NGG', 'NAG']):
-        """Get sgRNAs with PAM NGG and NAG
-
-        Args:
-            pams: the PAM to design
-
-        Returns:
-            None. The results are stored in self.sgrnas
-        """
-        sgrnas = []
-        for pam in pams:
-            pam_pattern = self._get_sgrna_pattern(pam)
-            pam_pattern_rc = self._get_sgrna_pattern(
-                pam, reverse_complement=True)
-            sgrnas += self._design_sgrna(self.seq, pam_pattern, pam)
-            sgrnas += self._design_sgrna(self.seq, pam_pattern_rc,
-                                         self._reverse_complement(pam),
-                                         reverse_complement=True)
-        for sgrna in sgrnas:
-            if sgrna.rc:
-                sgrna.cutting_site = sgrna.start + 2.5
-            else:
-                sgrna.cutting_site = sgrna.end - 2.5
-            self.sgrnas.append(sgrna)
-
-    def output(self):
-        """Output sgRNAs in a pandas DataFrame
-
-        Returns:
-            pd.DataFrame, the cord is 0-based, both for start and end
-        """
-        flag = True
-        for sgrna in self.sgrnas:
-            if sgrna.rc:
-                seq = sgrna.reverse_complement()
-            else:
-                seq = sgrna.sequence
-            df_row = [sgrna.start, sgrna.end, sgrna.sequence, sgrna.pam_type,
-                      sgrna.cutting_site, seq, sgrna.full_seq]
-            if flag:
-                df = np.asarray(df_row)
-                flag = False
-            else:
-                df = np.vstack((df, df_row))
-        df = pd.DataFrame(df)
-        df.columns = ['start', 'end', 'raw_sequence', 'pam_type',
-                      'cutting_site', 'sgrna_seq', 'sgrna_full_seq']
-        df.loc[:, 'cutting_site'] = df.cutting_site.astype(np.float)
-        df.loc[:, 'sgrna_id'] = np.arange(0, df.shape[0])
-        return df
-
-
-def build_screen_library(inputs, sgrna_num=3, ref_genome='hg38',
-                         mode='gene_symbol', off_target_tol='standard',
-                         pam='NGG'):
-    """Build screen library for a gene list. In gene_symbol mode, for gene that
-    have multiple transcripts, we will design sgRNAs for each transcript.
-
-    Args:
-        inputs:
-        sgrna_num:
-        ref_genome:
-        pam:
-        mode: ('gene_symbol', 'refseq_id')
-
-    Returns:
-
-    """
-    engine = sqlalchemy.create_engine(GENOME_EDITING_URI)
-
-    # check input
-    assert mode in ('gene_symbol', 'refseq_id'), 'Wrong mode'
-    assert off_target_tol in ('high', 'standard', 'low', False), \
-        'Wrong rm_off_target'
-    assert pam == 'NGG', 'Wrong PAM'
-
-    # get the refseq IDs of the input
-    if mode == 'gene_symbol':
-        table_name = 'igenome_ucsc_{}_refgene'.format(ref_genome)
-        gene_info = pd.read_sql(table_name, engine)
-        refseq_ids = gene_info[gene_info.name2.isin(inputs)].name.values
-    else:
-        refseq_ids = inputs
-
-    # get the tolerance of off-targets
-    if off_targets == 'high':
-        seed_len = 20
-    elif off_targets == 'standard':
-        seed_len = 16
-    elif off_targets == 'low':
-        seed_len = 12
-    else:
-        seed_len = False
-
-    flag = True
-    for refseq_id in refseq_ids:
-        # design all possible sgRNAs
-        # TODO: peptide percent and GC content
-        sgrna_designer = Designer(refseq_id=refseq_id,
-                                  sgrna_upstream=4,
-                                  ref_genome=ref_genome,
-                                  sgrna_downstream=3, sgrna_length=20,
-                                  flank=30, filter_tttt=False)
-        sgrna_designer.get_sgrnas(pam)
-        design_output = sgrna_designer.output()
-
-        # remove sgRNAs don't target coding region
-        design_output = design_output[
-            design_output.cutting_site_type.isin(['coding_region'])]
-
-        # remove sgRNAs with off-targets
-        if seed_len:
-            sgrna_seqs = design_output.sgrna_seq.values
-            have_off_target = []
-            for seq in sgrna_seqs:
-                have_off_target.append(
-                    off_targets.have_off_targets(seq, pam,
-                                                 upstream_len=seed_len,
-                                                 num_mismatch=0))
-            design_output = design_output.loc[~have_off_target, :]
-
-        # score
-        score_seqs = design_output.sgrna_full_seq.values
-        deep_rank_score = []
-        # TODO: function: input: seq and feats, output: score
-
-        # Pick sgRNA
-        sub_design_output = pick_top_sgrna(design_output, sgrna_num)
-        if flag:
-            screen_library = sub_design_output
-            flag = False
-        else:
-            screen_library = screen_library.append(sub_design_output)
-    return screen_library
-
-
-def pick_top_sgrna(design_output, sgrna_num):
-    return design_output.iloc[:sgrna_num]
-
-
-def design_sgrna_with_offtargets(refseq_id, ref_genome='hg19', pam='NGG',
-                                 bowtie_index=os.getenv(
-                                     'HG19_BOWTIE_INDEX_PATH')):
-    design = Designer(refseq_id=refseq_id, ref_genome=ref_genome)
-    design.get_sgrnas(pams=[pam])
-    design_out = design.output()
-    sgrna_seqs = design_out.sgrna_seq.values
-    offtarget_12mer = off_targets.sgrna_off_targets_batch(
-        sgrna_seqs, pam, seed=12, bowtie_index=bowtie_index)
-    offtarget_16mer = off_targets.sgrna_off_targets_batch(
-        sgrna_seqs, pam, seed=16, bowtie_index=bowtie_index)
-    offtarget_20mer = off_targets.sgrna_off_targets_batch(
-        sgrna_seqs, pam, seed=20, bowtie_index=bowtie_index)
-    design_out.loc[:, 'offtarget_12mer'] = offtarget_12mer
-    design_out.loc[:, 'offtarget_16mer'] = offtarget_16mer
-    design_out.loc[:, 'offtarget_20mer'] = offtarget_20mer
-    return design_out
